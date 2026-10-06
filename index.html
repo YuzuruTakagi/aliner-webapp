@@ -256,6 +256,9 @@ body {
 }
 .list-row:last-child { border-bottom: none; }
 .row-icon { width: 20px; text-align: center; color: var(--text-mut); flex-shrink: 0; }
+/* 天気アイコン（絵文字）。小さくて見づらいとの指摘があったため拡大・中央寄せ（★2026-10-06） */
+.weather-icon { display: inline-flex; align-items: center; justify-content: center; font-size: 19px; line-height: 1; vertical-align: middle; }
+.row-icon.weather-icon { width: 26px; }
 .row-main { flex: 1; min-width: 0; }
 .row-title { font-size: 14px; color: var(--text); }
 .row-sub { font-size: 12px; color: var(--text-mut); }
@@ -846,8 +849,8 @@ function renderHome(data) {
   document.getElementById('week-plan-preview').innerHTML = weekHtml;
 
   // 天気（ヘッダー右上・簡易）
-  document.getElementById('home-weather').textContent = data.weather
-    ? weatherIcon_(data.weather.today.code) + ' ' + Math.round(data.weather.today.max) + '℃'
+  document.getElementById('home-weather').innerHTML = data.weather
+    ? '<span class="weather-icon">' + weatherIcon_(data.weather.today.code) + '</span> ' + Math.round(data.weather.today.max) + '℃'
     : '天気未設定';
 
   // サントラック：日の出〜日没の間の現在位置（§12-1のモチーフ）
@@ -1085,16 +1088,18 @@ function renderPlanRows_(plans, emptyText) {
     : '<div class="empty">' + emptyText + '</div>';
 }
 
+// ★2026-10-06: 「今週の天気」が実際は2日分しか出てなかったため、GAS側のdays配列(7日分)を
+// そのままループして本当の週間表示にした。今日/明日以降は曜日ラベルにする。
 function renderRun(data) {
   var weatherHtml = '<div class="empty">緯度経度が未設定です（properties.local.js）</div>';
-  if (data.weather) {
-    weatherHtml =
-      '<div class="list-row"><span class="row-icon">' + weatherIcon_(data.weather.today.code) + '</span>'
-      + '<div class="row-main"><div class="row-title">今日</div></div>'
-      + '<div class="row-sub tabular">' + Math.round(data.weather.today.min) + '〜' + Math.round(data.weather.today.max) + '℃</div></div>'
-      + '<div class="list-row"><span class="row-icon">' + weatherIcon_(data.weather.tomorrow.code) + '</span>'
-      + '<div class="row-main"><div class="row-title">明日</div></div>'
-      + '<div class="row-sub tabular">' + Math.round(data.weather.tomorrow.min) + '〜' + Math.round(data.weather.tomorrow.max) + '℃</div></div>';
+  if (data.weather && data.weather.days) {
+    var dayLabels = ['今日', '明日'];
+    weatherHtml = data.weather.days.map(function (d, i) {
+      var label = dayLabels[i] || weekdayLabel_(d.date);
+      return '<div class="list-row"><span class="row-icon weather-icon">' + weatherIcon_(d.code) + '</span>'
+        + '<div class="row-main"><div class="row-title">' + label + '</div></div>'
+        + '<div class="row-sub tabular">' + Math.round(d.min) + '〜' + Math.round(d.max) + '℃</div></div>';
+    }).join('');
   }
   document.getElementById('run-weather').innerHTML = weatherHtml;
 
@@ -1349,6 +1354,10 @@ function formatTimeOnly_(iso) {
   if (iso.indexOf('T') === -1) return '終日';
   var d = new Date(iso);
   return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+function weekdayLabel_(dateStr) {
+  var d = new Date(dateStr + 'T00:00:00+09:00');
+  return ['日','月','火','水','木','金','土'][d.getDay()] + '曜';
 }
 
 // ============================================================
