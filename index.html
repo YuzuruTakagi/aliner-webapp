@@ -602,7 +602,21 @@ var GAS_API_URL = 'https://script.google.com/macros/s/AKfycbx4piSRxfGwa7eoc9d6Q0
 function callGas_(fnName, args) {
   // ★2026-10-06: 画面が公開ホスト(GitHub Pages)上にあるため、GAS_API_URL自体の秘匿性には頼れない。
   // 代わりにLIFFの本人確認トークンを毎回送り、GAS側(liffApi.js)でLINEのverify APIを使って検証する。
-  var idToken = (liffReady && window.liff && liff.getIDToken) ? liff.getIDToken() : null;
+  var idToken = null;
+  try {
+    idToken = (liffReady && window.liff && liff.getIDToken) ? liff.getIDToken() : null;
+  } catch (e) {
+    showLiffDiag_('idToken診断: getIDToken()で例外 - ' + (e && e.message ? e.message : String(e)));
+  }
+  // ★一時診断（2026-10-06）：原因切り分け用。解決したら消してよい。
+  if (!idToken) {
+    showLiffDiag_(
+      'idToken診断: liffReady=' + liffReady
+      + ' / isInClient=' + (window.liff && liff.isInClient ? liff.isInClient() : 'n/a')
+      + ' / isLoggedIn=' + (window.liff && liff.isLoggedIn ? liff.isLoggedIn() : 'n/a')
+      + ' / getIDToken結果=' + String(idToken)
+    );
+  }
   return fetch(GAS_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // JSON Content-Typeだとpreflightが飛ぶため簡易リクエストにする
