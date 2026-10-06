@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ALINER</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Anton&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   ALINER_基本設計.md §12 のトークンをそのまま実装。
+   bare :root = ライト、@media(dark) = システム設定に追従、
+   [data-theme] は将来の手動トグル用に予約（v1は未実装）。
+   ============================================================ */
+:root {
+  --bg:        #F1EADF;
+  --surface:   #FCF7EE;
+  --surface-2: #EDE3D2;
+  --line:      #DED2BC;
+  --text:      #2A211A;
+  --text-mut:  #7A6C59;
+  --accent:    #B24C2C;
+  --accent-soft: rgba(178,76,44,.14);
+  --cool:      #2E7A72;
+  --gold:      #976F1F;
+  --good:      #5B7A3D;
+  --warn:      #AE7419;
+  --crit:      #9C3826;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:        #1A1512;
+    --surface:   #241D18;
+    --surface-2: #302620;
+    --line:      #453629;
+    --text:      #EFE7DC;
+    --text-mut:  #A99A86;
+    --accent:    #CD6140;
+    --accent-soft: rgba(205,97,64,.16);
+    --cool:      #3E8E86;
+    --gold:      #C99A3E;
+    --good:      #82A059;
+    --warn:      #D6963A;
+    --crit:      #B0402F;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:        #1A1512;
+  --surface:   #241D18;
+  --surface-2: #302620;
+  --line:      #453629;
+  --text:      #EFE7DC;
+  --text-mut:  #A99A86;
+  --accent:    #CD6140;
+  --accent-soft: rgba(205,97,64,.16);
+  --cool:      #3E8E86;
+  --gold:      #C99A3E;
+  --good:      #82A059;
+  --warn:      #D6963A;
+  --crit:      #B0402F;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg); color: var(--text);
+  font-family: "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", "Inter", system-ui, sans-serif;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+body {
+  max-width: 480px; margin: 0 auto;
+  padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+}
+.tabular { font-variant-numeric: tabular-nums; }
+
+.view { display: none; animation: fadein .15s ease-out; }
+.view.active { display: block; }
+@keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ブランドバー（§12-2：ロゴマスターをinline・color:var(--accent)、ワードマークはAnton/skewX(-13deg)） */
+.brandbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0 10px;
+}
+.brandbar svg { height: 30px; width: auto; color: var(--accent); flex-shrink: 0; display: block; }
+.brandbar .wordmark {
+  font-family: "Anton", "Zen Kaku Gothic New", sans-serif;
+  font-size: 24px; line-height: .8; letter-spacing: .01em; text-transform: uppercase;
+  color: var(--text);
+  transform: skewX(-13deg); transform-origin: left center; display: inline-block;
+}
+.brandbar .theme-toggle {
+  margin-left: auto; background: none; border: none; cursor: pointer;
+  color: var(--text-mut); font-size: 16px; line-height: 1; padding: 4px;
+}
+
+/* サントラック（ALINERのモチーフ。§12-1のグラデをそのまま使用） */
+.suntrack { position: relative; height: 20px; margin: 2px 4px 18px; }
+.suntrack .rail {
+  position: absolute; inset: 8px 0; border-radius: 999px;
+  background: linear-gradient(90deg, #CD6140 0%, #D6A24E 44%, #5E5A50 74%, #2E2733 100%);
+  opacity: .9;
+}
+.suntrack .now {
+  position: absolute; top: 50%; width: 11px; height: 11px; border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--surface); border: 2px solid var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+.suntrack .lbl { position: absolute; top: 100%; font-size: 10px; color: var(--text-mut); letter-spacing: .06em; }
+.suntrack .lbl.l { left: 0; } .suntrack .lbl.r { right: 0; }
+
+/* コーチカード（§0「HOMEのアドバイスは生成済みコーチコメントを読むだけ」・§12-5） */
+.coach-row { display: flex; gap: 12px; }
+.coach-bar { width: 3px; border-radius: 2px; background: var(--accent); flex: 0 0 3px; }
+.coach-who {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--accent);
+  text-transform: uppercase; margin-bottom: 4px;
+}
+.coach-text { font-size: 14px; line-height: 1.6; color: var(--text); }
+.coach-cta {
+  margin-top: 10px; display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 999px; border: 1px solid var(--accent);
+  background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 700;
+  cursor: pointer;
+}
+
+/* 予定リスト行（時刻＋ドット＋タイトル＋チップ＋チェック。§12-5） */
+.plan-item { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+.plan-item:first-child { border-top: none; padding-top: 2px; }
+.plan-time { font-size: 12px; color: var(--text-mut); width: 40px; flex: 0 0 40px; font-variant-numeric: tabular-nums; }
+.plan-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px; }
+.plan-ttl { font-size: 14px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plan-chip {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .03em; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--text-mut); white-space: nowrap; flex-shrink: 0;
+}
+.plan-chip.routine { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+/* 家計簿帯（今月の支出/収入/総資産＋週次/月次2行。§12-5） */
+.finance-summary { display: flex; gap: 14px; padding-bottom: 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.finance-summary .f { display: flex; flex-direction: column; gap: 2px; }
+.finance-summary .f .k { font-size: 10.5px; color: var(--text-mut); letter-spacing: .03em; }
+.finance-summary .f .v { font-size: 16px; font-weight: 500; }
+.finance-summary .f.expense .v { color: var(--text); }
+.finance-summary .f.income .v { color: var(--good); }
+.finance-summary .f.assets .v { color: var(--gold); }
+.finance-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+.finance-row:first-child, #finance-summary + .finance-row { border-top: none; padding-top: 2px; }
+.finance-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 9px; }
+.finance-dot.ok { background: var(--good); box-shadow: 0 0 0 3px rgba(91,122,61,.18); }
+.finance-dot.warn { background: transparent; border: 2px solid var(--warn); }
+.finance-label { font-size: 13px; color: var(--text); }
+.finance-sub { font-size: 12px; color: var(--text-mut); }
+.finance-spacer { margin-left: auto; }
+.finance-act {
+  font-size: 11.5px; font-weight: 700; color: var(--gold); border: 1px solid var(--gold);
+  padding: 4px 10px; border-radius: 999px; background: transparent; cursor: pointer;
+}
+
+/* 健康メトリクス「軽量版」（今日の値＋前日比のみ。7日/30日グラフはv2 trend画面の担当） */
+.metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.metric-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+  padding: 12px 13px; display: flex; flex-direction: column; gap: 5px;
+}
+.metric-label { font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--text-mut); text-transform: uppercase; }
+.metric-value { display: flex; align-items: baseline; gap: 4px; }
+.metric-value .n { font-size: 24px; font-weight: 500; letter-spacing: -.01em; }
+.metric-value .u { font-size: 11px; color: var(--text-mut); }
+.metric-delta { font-size: 11px; font-weight: 500; }
+.metric-delta.up { color: var(--good); }
+.metric-delta.down { color: var(--cool); }
+.metric-delta.flat { color: var(--text-mut); }
+
+/* クイックアクション（アイコン3つ。§2リッチメニューの今日の予定/記録/ToDo相当） */
+.quick-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.quick-btn {
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px;
+  padding: 12px 8px; text-align: center; font-size: 12px; font-weight: 700; color: var(--text);
+  cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.quick-btn svg { width: 18px; height: 18px; color: var(--accent); }
+
+/* 買い物リスト（リスト毎グルーピング＋数量ステッパー） */
+.shop-list-card { margin-bottom: 12px; }
+.shop-list-name { display: flex; align-items: center; gap: 8px; }
+.shop-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.shop-item:first-child { border-top: none; padding-top: 4px; }
+.shop-item .row-title { font-size: 14px; }
+.shop-item.in-cart .row-title { color: var(--text-mut); text-decoration: line-through; }
+.shop-qty { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.shop-qty button {
+  width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line);
+  background: var(--surface-2); color: var(--text); font-size: 13px; line-height: 1;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.shop-qty .n { font-size: 13px; min-width: 16px; text-align: center; }
+
+.header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 14px;
+}
+.header .greeting { color: var(--text); font-size: 20px; font-weight: 700; }
+.header .sub { color: var(--text-mut); font-size: 13px; }
+
+.card {
+  background: var(--surface);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 8px 24px -12px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
+}
+.card-title {
+  font-size: 13px; color: var(--text-mut); margin: 0 0 10px; font-weight: 500;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.card-accent { border-left: 3px solid var(--accent); padding-left: 13px; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: 999px; cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 500;
+  padding: 10px 18px;
+  background: var(--surface-2); color: var(--text); border: 1px solid var(--line);
+}
+.btn-accent { background: var(--accent); color: #FCF7EE; border: none; }
+.btn-pill-sm {
+  padding: 5px 12px; font-size: 12px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent); border: none;
+}
+.btn-block { width: 100%; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.daytype-row { display: flex; gap: 8px; }
+.daytype-btn {
+  flex: 1; padding: 16px 8px; border-radius: 14px; text-align: center;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--text);
+  font-size: 15px; font-weight: 500; cursor: pointer;
+}
+.daytype-btn.selected { background: var(--accent); color: #FCF7EE; border-color: var(--accent); }
+
+.list-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--line);
+}
+.list-row:last-child { border-bottom: none; }
+.row-icon { width: 20px; text-align: center; color: var(--text-mut); flex-shrink: 0; }
+.row-main { flex: 1; min-width: 0; }
+.row-title { font-size: 14px; color: var(--text); }
+.row-sub { font-size: 12px; color: var(--text-mut); }
+.badge {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+}
+.badge-mut { background: var(--surface-2); color: var(--text-mut); }
+
+.check-circle {
+  width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+  border: 2px solid var(--line); background: transparent;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: transparent; font-size: 14px;
+  transition: background .18s, border-color .18s, transform .18s;
+}
+.check-circle.checked { background: var(--good); border-color: var(--good); color: #FCF7EE; transform: scale(1.05); }
+
+.nav-card { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+.nav-card .big-num { font-size: 28px; font-weight: 700; color: var(--accent); }
+
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.chip {
+  padding: 8px 14px; border-radius: 12px; font-size: 13px;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--text-mut);
+  cursor: pointer;
+}
+.chip.selected { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+
+label.field-label { display: block; font-size: 12px; color: var(--text-mut); margin: 14px 0 6px; }
+input[type="text"], input[type="datetime-local"], select {
+  width: 100%; padding: 10px 12px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--text);
+  font-family: inherit; font-size: 14px;
+}
+.checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; color: var(--text-mut); }
+
+.top-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.top-nav .back { cursor: pointer; color: var(--text-mut); font-size: 20px; }
+.top-nav .title { font-size: 16px; font-weight: 700; }
+
+.empty { color: var(--text-mut); font-size: 13px; padding: 8px 0; }
+.loading { color: var(--text-mut); font-size: 13px; padding: 20px 0; text-align: center; }
+</style>
+</head>
+<body>
+
+<!-- ★2026-09-14診断用：LIFF接続に失敗した時だけ理由を画面に出す（実機でconsole.logが見れないため）。
+     普段は空のまま非表示。問題が解消したら消してよい一時的な仕組み。 -->
+<div id="liff-diag" style="display:none; background:#9C3826; color:#fff; font-size:12px; padding:8px 12px; margin:-16px -16px 12px; word-break:break-all"></div>
+
+<!-- ブランドバー（全画面共通・常時表示。§12-2） -->
+<div class="brandbar">
+  <svg viewBox="0 0 423 303" role="img" aria-label="ALINER" fill="currentColor">
+    <path d="M302.5 41c-10.1 2.1-20.4 7.8-26.7 14.8l-3.4 3.8-6-2.4c-3.2-1.3-11.1-3.6-17.4-5.2-41.4-10.6-84.7-3.2-120.3 20.7C94.1 95.8 71.3 132.6 65 175.3c-1.7 11.4-1.4 32.6.5 43.7 1.5 8.6 5.1 22.9 7 27.3.7 1.6-.7 1.7-19.9 1.7H32v15h360v-15h-40.8l2.3-7.2c11.4-35.9 8.9-74-7-108.4l-3.5-7.6 4.5-5c20.8-23.2 13.4-60.4-14.9-74.3-9.9-4.9-20.3-6.5-30.1-4.5m-65.8 23.6c8 1.4 26 6.8 27.6 8.4.5.4.4 4.1-.3 8.2-2.2 14.8 2.3 29 12.7 39.9 6.7 7 11.9 10.4 20.4 13 7.3 2.3 19.2 2.5 26.9.4 3-.8 5.5-1.3 5.6-1.2 1.3 1.6 7 14.3 8.9 20.1 4.3 12.7 5.7 21.4 6.2 38.1.5 18.7-1.3 32-6.7 47.2l-3.3 9.3h-51.2l-4.1-7.3c-13.1-23.2-66.7-116.3-67.3-117-.7-.7-6.9 9.6-46.1 76.8-9 15.4-18.9 32.3-22 37.5l-5.6 9.5H89.6l-2.9-7.5c-5.6-14.5-7.1-23.6-7.1-44-.1-14.3.3-20.4 1.7-26.8 12.8-58 59.3-100.3 116.9-106.2 10.1-1 27.4-.3 38.5 1.6m-21.2 96.2c3.4 6.2 40 70 45.9 79.7 2 3.3 3.6 6.3 3.6 6.7 0 .5-11.9.8-26.5.8s-26.5-.3-26.5-.8c-.4-18.4-.4-92.2 0-92.2.3 0 1.9 2.6 3.5 5.8"/>
+  </svg>
+  <span class="wordmark">ALINER</span>
+  <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" aria-label="ライト/ダーク切替">◐</button>
+</div>
+
+<!-- ============ HOME ============ -->
+<div class="view" id="view-home">
+  <div class="header">
+    <div>
+      <div class="greeting" id="home-greeting">ALINER</div>
+      <div class="sub" id="home-date">-</div>
+    </div>
+    <div class="sub" id="home-weather">－</div>
+  </div>
+
+  <!-- サントラック（ALINERのモチーフ。§12-1） -->
+  <div class="suntrack" aria-hidden="true">
+    <div class="rail"></div>
+    <div class="now" id="sun-now" style="left:30%"></div>
+    <span class="lbl l">夜明け</span>
+    <span class="lbl r">日没</span>
+  </div>
+
+  <!-- コーチカード（§0：HOMEのアドバイスは朝夜会話で生成済みのコーチコメントを読むだけ） -->
+  <div class="card card-accent">
+    <div class="coach-row">
+      <div class="coach-bar"></div>
+      <div>
+        <div class="coach-who">コーチ</div>
+        <div class="coach-text" id="coach-text">今日の一言はまだありません（朝夜の会話が実装されたらここに出ます）</div>
+        <button class="coach-cta" onclick="sendToBot('#rest_adjust')">今日を調整する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 健康メトリクス軽量版（今日の値＋前日比のみ。詳細グラフはv2「健康トレンド」画面。§3） -->
+  <div class="metrics-grid" id="metrics-grid">
+    <div class="metric-card"><span class="metric-label">歩数</span><div class="metric-value"><span class="n tabular">－</span></div></div>
+    <div class="metric-card"><span class="metric-label">睡眠</span><div class="metric-value"><span class="n tabular">－</span></div></div>
+    <div class="metric-card"><span class="metric-label">体重</span><div class="metric-value"><span class="n tabular">－</span></div></div>
+    <div class="metric-card"><span class="metric-label">VO2max</span><div class="metric-value"><span class="n tabular">－</span></div></div>
+  </div>
+
+  <!-- JSは常にこのカードを表示に切り替える（dayType未選択でも3択は出す）ため、初期状態から見せておく -->
+  <div class="card" id="daytype-card">
+    <div class="card-title">今日の日種別</div>
+    <div class="daytype-row" id="daytype-buttons">
+      <div class="daytype-btn">出社</div>
+      <div class="daytype-btn">在宅</div>
+      <div class="daytype-btn">休日</div>
+    </div>
+  </div>
+
+  <div class="card card-accent" id="routine-card" style="display:none">
+    <div class="card-title">今日のチェックリスト＋予定</div>
+    <div id="routine-list"></div>
+  </div>
+
+  <div class="card nav-card" onclick="goTo('shopping')">
+    <div>
+      <div class="row-title">買い物リスト</div>
+      <div class="row-sub">欲しいもの</div>
+    </div>
+    <div class="big-num tabular" id="shopping-count">0</div>
+  </div>
+
+  <div class="card" onclick="goTo('run')" style="cursor:pointer">
+    <div class="card-title">今週の予定・天気<span>→</span></div>
+    <div id="week-plan-preview"><div class="empty">読み込み中…</div></div>
+  </div>
+
+  <div class="card">
+    <button class="btn btn-accent btn-block" onclick="goTo('plan_add')">＋ 予定をまとめて追加</button>
+  </div>
+
+  <!-- 家計簿帯（今月の支出/収入/総資産＋週次/月次締め状況。reportDbは未接続のためプレースホルダ。§5⑨・§12-5） -->
+  <div class="card">
+    <div class="card-title">家計簿</div>
+    <div class="finance-summary" id="finance-summary">
+      <div class="f expense"><span class="k">支出</span><span class="v tabular">未接続</span></div>
+      <div class="f income"><span class="k">収入</span><span class="v tabular">未接続</span></div>
+      <div class="f assets"><span class="k">総資産</span><span class="v tabular">未接続</span></div>
+    </div>
+    <div class="finance-row">
+      <span class="finance-dot warn" id="weekly-dot"></span>
+      <span class="finance-label">週次締め</span>
+      <span class="finance-sub" id="weekly-sub">未接続</span>
+      <span class="finance-spacer"></span>
+      <button class="finance-act" id="weekly-act" style="display:none" onclick="openReceiptChat_()">締める</button>
+    </div>
+    <div class="finance-row">
+      <span class="finance-dot warn" id="monthly-dot"></span>
+      <span class="finance-label">月次締め</span>
+      <span class="finance-sub" id="monthly-sub">未接続</span>
+      <span class="finance-spacer"></span>
+      <button class="finance-act" id="monthly-act" style="display:none" onclick="openReceiptChat_()">締める</button>
+    </div>
+  </div>
+
+  <!-- クイックアクション（リッチメニューの今日の予定/記録/ToDoに対応） -->
+  <div class="quick-grid">
+    <button class="quick-btn" onclick="sendToBot('今日の予定は？')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
+      今日の予定
+    </button>
+    <button class="quick-btn" onclick="sendToBot('#quick_record')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      記録
+    </button>
+    <button class="quick-btn" onclick="sendToBot('#todo_chat')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      ToDo
+    </button>
+  </div>
+</div>
+
+<!-- ============ 買い物リスト ============ -->
+<div class="view" id="view-shopping">
+  <div class="top-nav">
+    <span class="back" onclick="goTo('home')">←</span>
+    <span class="title">買い物リスト</span>
+    <span class="finance-spacer"></span>
+    <span class="back" onclick="refreshShopping()" title="Notionから更新（未保存の変更は失われます）">⟳</span>
+  </div>
+
+  <!-- 進行中の全リストをグルーピング表示（１つだけ選ぶUIにはしない＝買い忘れ防止） -->
+  <!-- チェック/数量変更はShoppingCacheシートだけを更新（高速）。Notionへの反映は保存/レシートボタンで一括。 -->
+  <div id="shopping-lists">
+    <div class="card"><div class="empty">読み込み中…</div></div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" onclick="saveShopping()">一時保存</button>
+    <button class="btn btn-accent" onclick="finalizeAndTakeReceipt()">レシートを撮る</button>
+  </div>
+  <div class="empty" id="shopping-save-status"></div>
+</div>
+
+<!-- ============ ランニング/健康 ============ -->
+<div class="view" id="view-run">
+  <div class="top-nav">
+    <span class="back" onclick="goTo('home')">←</span>
+    <span class="title">ランニング/健康</span>
+  </div>
+
+  <div class="card">
+    <div class="card-title">今週の天気</div>
+    <div id="run-weather"><div class="empty">読み込み中…</div></div>
+  </div>
+
+  <!-- 過去1週間：予実（planDb.状態をそのまま表示。完了/中止ボタンは実績突合が固まるまで見送り） -->
+  <div class="card">
+    <div class="card-title">過去1週間</div>
+    <div id="run-past-week"><div class="empty">読み込み中…</div></div>
+  </div>
+
+  <!-- 今日：コーチコメント＋今日の練習内容（今後の予定と合わせて見て調整を判断する） -->
+  <div class="card card-accent">
+    <div class="card-title">今日</div>
+    <div class="coach-text" id="run-today-coach">コーチコメントはまだありません</div>
+    <div id="run-today-plans"><div class="empty">読み込み中…</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">今後1週間</div>
+    <div id="run-plan-list"><div class="empty">読み込み中…</div></div>
+  </div>
+
+  <button class="btn btn-accent btn-block" onclick="sendToBot('今日の予定は？')">予定を変更する</button>
+</div>
+
+<!-- ============ 予定 連続登録フォーム ============ -->
+<div class="view" id="view-plan_add">
+  <div class="top-nav">
+    <span class="back" onclick="goTo('home')">←</span>
+    <span class="title">予定を追加</span>
+  </div>
+
+  <div class="card">
+    <label class="field-label">カテゴリ</label>
+    <div class="chip-row" id="plan-category-chips"><div class="empty">読み込み中…</div></div>
+
+    <label class="field-label">タイトル</label>
+    <input type="text" id="plan-title" placeholder="例：整体、Aさんとランチ">
+
+    <label class="field-label">日時</label>
+    <input type="datetime-local" id="plan-datetime">
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="plan-routine">
+      <label for="plan-routine">ルーティン（習慣タスク）</label>
+    </div>
+
+    <div class="btn-row" style="margin-top:18px">
+      <button class="btn btn-accent" onclick="submitPlan(true)">追加してもう1件</button>
+      <button class="btn" onclick="submitPlan(false)">追加して閉じる</button>
+    </div>
+    <div class="empty" id="plan-status"></div>
+  </div>
+
+  <!-- 「買い物」カテゴリ選択時のみ表示（他カテゴリでは買い物リストの内容を出さない。ユーザー指定） -->
+  <div class="card" id="plan-shopping-panel" style="display:none">
+    <div class="card-title">買い物リスト</div>
+    <label class="field-label">既存のリストに追加</label>
+    <select id="plan-shopping-list-select"><option value="">（新規作成する）</option></select>
+    <label class="field-label">新しいリスト名（新規作成する場合）</label>
+    <input type="text" id="plan-shopping-list-name" placeholder="例：スーパー用">
+
+    <label class="field-label">品目を追加</label>
+    <div class="btn-row" style="align-items:center; flex-wrap:nowrap">
+      <input type="text" id="plan-shopping-item-name" placeholder="品名（例：洗剤）" autocomplete="off" style="flex:1; min-width:0">
+      <div class="shop-qty">
+        <button onclick="changeNewItemQty_(-1)">－</button>
+        <span class="n tabular" id="plan-shopping-item-qty">1</span>
+        <button onclick="changeNewItemQty_(1)">＋</button>
+      </div>
+      <button class="btn btn-pill-sm" onclick="addShoppingItemDraft_()">追加</button>
+    </div>
+
+    <label class="field-label">定期ストックから追加（タップで一覧に追加）</label>
+    <div class="chip-row" id="plan-shopping-stock-chips"><div class="empty">読み込み中…</div></div>
+
+    <label class="field-label">このリストに追加する品目</label>
+    <div id="plan-shopping-draft-items"><div class="empty">まだ品目がありません</div></div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// LIFF初期化
+// ★2026-09-14: 「ALINER」ミニアプリチャネルの開発用LIFF IDを設定済み。
+// 審査を通していない未認証ミニアプリのため、開発用IDはチャネル管理者（自分）のLINEアカウントで
+// しか開けない（審査用/本番用は未設定・未使用のまま。§10-56参照）。
+// ============================================================
+var LIFF_ID = '2011584139-bwCVcUwv';
+var liffReady = false;
+
+function showLiffDiag_(text) {
+  var el = document.getElementById('liff-diag');
+  el.textContent = text;
+  el.style.display = '';
+}
+
+if (!window.liff) {
+  showLiffDiag_('LIFF診断: LIFF SDKが読み込まれていません（liff.line.me以外から開いた可能性）');
+} else if (!LIFF_ID) {
+  showLiffDiag_('LIFF診断: LIFF_IDが未設定です');
+} else {
+  liff.init({ liffId: LIFF_ID }).then(function () {
+    liffReady = true;
+  }).catch(function (e) {
+    showLiffDiag_('LIFF診断: liff.init失敗 - ' + (e && e.message ? e.message : String(e)));
+  });
+}
+
+// bot連携：LIFFがあればトーク側へメッセージを送って閉じる。無ければ素のブラウザ確認用にアラートで代替。
+// ★2026-09-13: このLIFFは「ALINER」チャネルに属するので、送信先は常にALINERのトーク
+// （固定コマンド文字列をLINE_HealthCoachのWebhookが受けて処理する。handlers.js参照）。
+function sendToBot(text) {
+  if (liffReady && window.liff && liff.isInClient && liff.isInClient()) {
+    liff.sendMessages([{ type: 'text', text: text }]).then(function () {
+      liff.closeWindow();
+    });
+  } else {
+    alert('（LIFF未接続のためbot連携は未実行）\nトークへ送信予定のテキスト: ' + text);
+  }
+}
+
+// 家計簿ドメイン（週次/月次締め・レシート撮影）は「レシート情報読み取り」という別チャネルの
+// 担当（SYSTEM_DESIGN.md §10-53〜54）。LINEはチャネルをまたいだメッセージ転送ができないため、
+// メッセージを送る代わりにそのチャネルのトーク自体へジャンプする（line://ti/p/@BasicID）。
+// ジャンプ後、コマンド文言（「週次締め開始」等）はユーザー自身がそのトークで入力する必要がある。
+var RECEIPT_ACCOUNT_BASIC_ID = '060qvycr'; // 「レシート情報読み取り」チャネルのBasic ID
+function openReceiptChat_() {
+  if (liffReady && window.liff && liff.openWindow) {
+    liff.openWindow({ url: 'line://ti/p/@' + RECEIPT_ACCOUNT_BASIC_ID, external: false });
+  } else {
+    alert('（LIFF未接続のためトーク切替は未実行）\n「レシート情報読み取り」のトークを開いてください');
+  }
+}
+
+// ============================================================
+// GASバックエンドとの通信
+// ★2026-10-06: GASのWebアプリ(/exec)がLIFFのエンドポイントURLとして使えない
+// （内部でscript.googleusercontent.comへ302リダイレクトするため）問題を切り離すため、
+// 画面（このファイル）だけGitHub Pages等の静的ホストへ移設。データ取得は
+// google.script.run ではなく fetch() でGASのdoPost（JSON API）を直接叩く。
+// GAS_API_URL は LINE_HealthCoach の既存デプロイURLをそのまま使う
+// （バッチ・Webhook・Notion連携などGAS側のロジックは無変更）。
+// ★GAS側のCORS対応・JSON APIディスパッチャ実装は別途対応（移行手順③）。
+// ============================================================
+var GAS_API_URL = 'https://script.google.com/macros/s/AKfycbx4piSRxfGwa7eoc9d6Q0pW3JuzDcazbnghHEnnxeYPMWyxMgL3P_ZtOcrfKRMIkDSbXQ/exec';
+
+function callGas_(fnName, args) {
+  return fetch(GAS_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // JSON Content-Typeだとpreflightが飛ぶため簡易リクエストにする
+    body: JSON.stringify({ fn: fnName, args: args || [] })
+  }).then(function (res) {
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }).then(function (json) {
+    if (json && json.error) throw new Error(json.error);
+    return json && json.result;
+  });
+}
+
+// 既存の呼び出し側コード（withGas(cb).getHomeData() など15箇所）を変更せずに使えるよう、
+// google.script.run と同じ「メソッド名＝GAS側の関数名」という呼び方をProxyで再現する。
+function withGas(successFn) {
+  var failureHandler = function (err) {
+    console.error(err);
+    alert('通信エラー: ' + (err && err.message ? err.message : err));
+  };
+  return new Proxy({}, {
+    get: function (target, fnName) {
+      return function () {
+        var args = Array.prototype.slice.call(arguments);
+        callGas_(fnName, args).then(successFn).catch(failureHandler);
+      };
+    }
+  });
+}
+
+// ============================================================
+// 画面切替
+// ============================================================
+// ★2026-10-06: GASのテンプレート構文(<?= initialScreen ?>)を廃止し、URLのクエリパラメータ
+// （?screen=shopping 等）をクライアントJSで直接読む形に変更（静的ホスティングのため）。
+var currentScreen = (new URLSearchParams(window.location.search).get('screen')) || 'home';
+var selectedCategory = null;
+
+function goTo(screen) {
+  document.querySelectorAll('.view').forEach(function (el) { el.classList.remove('active'); });
+  var target = document.getElementById('view-' + screen);
+  if (!target) screen = 'home', target = document.getElementById('view-home');
+  target.classList.add('active');
+  currentScreen = screen;
+
+  if (screen === 'home') loadHome();
+  else if (screen === 'shopping') loadShopping();
+  else if (screen === 'run') loadRun();
+  else if (screen === 'plan_add') initPlanAddForm();
+}
+
+// ============================================================
+// HOME
+// ============================================================
+function loadHome() {
+  var now = new Date();
+  document.getElementById('home-greeting').textContent = greetingByHour_(now.getHours());
+  document.getElementById('home-date').textContent =
+    (now.getMonth() + 1) + '月' + now.getDate() + '日(' + ['日','月','火','水','木','金','土'][now.getDay()] + ')';
+
+  withGas(renderHome).getHomeData();
+}
+
+function greetingByHour_(h) {
+  if (h < 5) return 'おやすみなさい';
+  if (h < 11) return 'おはよう';
+  if (h < 17) return 'こんにちは';
+  return 'おつかれさま';
+}
+
+function renderHome(data) {
+  document.getElementById('shopping-count').textContent = data.shoppingWantCount;
+
+  // 日種別（§12-5：選択済みはアクセント地で表示され続ける＝選んだ後もボタンは消さない）
+  var dtCard = document.getElementById('daytype-card');
+  var routineCard = document.getElementById('routine-card');
+  dtCard.style.display = '';
+  document.getElementById('daytype-buttons').innerHTML = data.dayTypeOptions.map(function (opt) {
+    var selected = (opt === data.dayType) ? ' selected' : '';
+    return '<div class="daytype-btn' + selected + '" onclick="pickDayType(\'' + opt + '\')">' + opt + '</div>';
+  }).join('');
+
+  if (!data.dayType) {
+    routineCard.style.display = 'none';
+  } else {
+    routineCard.style.display = '';
+    renderRoutineAndPlan_(data.routineItems, data.planToday);
+  }
+
+  // 週予定プレビュー（先頭3件）
+  var weekHtml;
+  if (data.weekHealthPlans.length === 0) {
+    weekHtml = '<div class="empty">今週の健康・運動系の予定はまだありません</div>';
+  } else {
+    weekHtml = data.weekHealthPlans.map(function (p) {
+      return '<div class="list-row"><span class="row-icon">🏃</span><div class="row-main">'
+        + '<div class="row-title">' + escapeHtml_(p.title) + '</div>'
+        + '<div class="row-sub">' + formatDateTimeShort_(p.dateTime) + '</div></div></div>';
+    }).join('');
+  }
+  document.getElementById('week-plan-preview').innerHTML = weekHtml;
+
+  // 天気（ヘッダー右上・簡易）
+  document.getElementById('home-weather').textContent = data.weather
+    ? weatherIcon_(data.weather.today.code) + ' ' + Math.round(data.weather.today.max) + '℃'
+    : '天気未設定';
+
+  // サントラック：日の出〜日没の間の現在位置（§12-1のモチーフ）
+  var sunNow = document.getElementById('sun-now');
+  if (data.weather && data.weather.sunrise && data.weather.sunset) {
+    var sunrise = new Date(data.weather.sunrise).getTime();
+    var sunset = new Date(data.weather.sunset).getTime();
+    var now = Date.now();
+    var frac = (now - sunrise) / (sunset - sunrise);
+    frac = Math.max(0, Math.min(1, frac));
+    sunNow.style.left = (frac * 100) + '%';
+  }
+
+  // コーチの一言（§0：生成済みコメントを読むだけ。まだ無ければプレースホルダのまま）
+  if (data.coachComment) {
+    document.getElementById('coach-text').textContent = data.coachComment;
+  }
+
+  renderMetrics_(data.healthMetrics);
+  renderFinanceSummary_(data.financeSummary);
+  renderClosingStatus_(data.closingStatus);
+}
+
+// 週次/月次締め状況（reportDb直読み。未接続なら「未接続」のまま）
+function renderClosingStatus_(status) {
+  if (!status) return; // HTML初期値の「未接続」のまま
+  renderClosingRow_('weekly', status.weekly);
+  renderClosingRow_('monthly', status.monthly);
+}
+function renderClosingRow_(prefix, s) {
+  document.getElementById(prefix + '-dot').className = 'finance-dot ' + (s.done ? 'ok' : 'warn');
+  document.getElementById(prefix + '-sub').textContent = s.label;
+  document.getElementById(prefix + '-act').style.display = s.done ? 'none' : '';
+}
+
+// 今月の支出・収入・総資産（家計簿ドメインを読み取り専用で直接参照。§10-37）
+function renderFinanceSummary_(f) {
+  var el = document.getElementById('finance-summary');
+  // fがnull＝家計簿DB未設定。HTML初期状態の「未接続」表示をそのまま残す（空にして消えたように見せない）
+  if (!f) return;
+  el.innerHTML =
+    '<div class="f expense"><span class="k">支出</span><span class="v tabular">¥' + Math.round(f.expense).toLocaleString() + '</span></div>'
+    + '<div class="f income"><span class="k">収入</span><span class="v tabular">¥' + Math.round(f.income).toLocaleString() + '</span></div>'
+    + '<div class="f assets"><span class="k">総資産</span><span class="v tabular">¥' + Math.round(f.totalAssets).toLocaleString() + '</span></div>';
+}
+
+// 健康メトリクス軽量版（値が無ければ「－」。詳細グラフはv2 trend画面の担当）
+function renderMetrics_(m) {
+  var grid = document.getElementById('metrics-grid');
+  // サーバー側は常にオブジェクトを返す設計（liff.js）だが、万一値が来なくても
+  // HTML初期状態の「－」スケルトンをそのまま残す（空にして消えたように見せない）
+  if (!m) return;
+
+  // 矢印の向きをそのまま色クラスに（▲=up=good系の緑、▼=down=cool系の青。モックの配色そのまま）
+  function deltaHtml(delta, unit) {
+    if (delta == null) return '<span class="metric-delta flat">前日比 －</span>';
+    if (delta === 0) return '<span class="metric-delta flat">± 0</span>';
+    var isUp = delta > 0;
+    return '<span class="metric-delta ' + (isUp ? 'up' : 'down') + '">' + (isUp ? '▲' : '▼') + ' ' + Math.abs(delta) + unit + '</span>';
+  }
+
+  grid.innerHTML =
+    '<div class="metric-card"><span class="metric-label">歩数</span>'
+    + '<div class="metric-value"><span class="n tabular">' + (m.steps != null ? m.steps.toLocaleString() : '－') + '</span></div>'
+    + '<span class="metric-delta flat">目標 ' + m.stepsGoal.toLocaleString() + '</span></div>'
+
+    + '<div class="metric-card"><span class="metric-label">睡眠</span>'
+    + '<div class="metric-value"><span class="n tabular">' + (m.sleepMinutes != null ? minutesToHm_(m.sleepMinutes) : '－') + '</span>'
+    + (m.sleepMinutes != null ? '<span class="u">h</span>' : '') + '</div>'
+    + deltaHtml(m.sleepDeltaMinutes, '分') + '</div>'
+
+    + '<div class="metric-card"><span class="metric-label">体重</span>'
+    + '<div class="metric-value"><span class="n tabular">' + (m.weightKg != null ? m.weightKg : '－') + '</span>'
+    + (m.weightKg != null ? '<span class="u">kg</span>' : '') + '</div>'
+    + deltaHtml(m.weightDeltaKg, '') + '</div>'
+
+    + '<div class="metric-card"><span class="metric-label">VO2max</span>'
+    + '<div class="metric-value"><span class="n tabular">' + (m.vo2max != null ? m.vo2max : '－') + '</span></div>'
+    + deltaHtml(m.vo2maxDelta, '') + '</div>';
+}
+
+function minutesToHm_(min) {
+  var h = Math.floor(min / 60), m = Math.round(min % 60);
+  return h + ':' + ('0' + m).slice(-2);
+}
+
+function pickDayType(dayType) {
+  withGas(function () { loadHome(); }).setDayType(dayType);
+}
+
+// カテゴリ名→ドット色（トークンの役割に合わせたゆるいマッピング）
+function categoryColor_(name) {
+  var map = {
+    '健康・運動': 'var(--accent)',
+    '買い物': 'var(--gold)',
+    '仕事': 'var(--cool)',
+    '学習': 'var(--cool)',
+    '自己研鑽': 'var(--cool)',
+    'イベント・交際': 'var(--good)'
+  };
+  return map[name] || 'var(--text-mut)';
+}
+
+function renderRoutineAndPlan_(routineItems, planToday) {
+  var rows = [];
+  routineItems.forEach(function (item) {
+    var checked = item.doneCount > 0;
+    rows.push(
+      '<div class="plan-item">'
+      + '<span class="plan-dot" style="background:' + categoryColor_(item.categoryName) + '"></span>'
+      + '<span class="plan-ttl">' + escapeHtml_(item.name) + '</span>'
+      + '<span class="plan-chip routine">ルーティン' + (item.doneCount > 1 ? '・' + item.doneCount + '回' : '') + '</span>'
+      + '<div class="check-circle' + (checked ? ' checked' : '') + '" onclick="checkRoutine(\'' + item.id + '\',\'' + escapeJs_(item.name) + '\',' + (item.categoryId ? '\'' + item.categoryId + '\'' : 'null') + ',this)">✓</div>'
+      + '</div>'
+    );
+  });
+  planToday.forEach(function (p) {
+    rows.push(
+      '<div class="plan-item">'
+      + '<span class="plan-time">' + formatTimeOnly_(p.dateTime) + '</span>'
+      + '<span class="plan-dot" style="background:' + categoryColor_(p.categoryName) + '"></span>'
+      + '<span class="plan-ttl">' + escapeHtml_(p.title) + '</span>'
+      + (p.statusName ? '<span class="plan-chip">' + escapeHtml_(p.statusName) + '</span>' : '')
+      + '</div>'
+    );
+  });
+  document.getElementById('routine-list').innerHTML = rows.length ? rows.join('') : '<div class="empty">今日の項目はありません</div>';
+}
+
+function checkRoutine(id, name, categoryId, el) {
+  el.classList.add('checked'); // 楽観的にすぐ反映
+  withGas(function () { loadHome(); }).toggleRoutineCheck(id, name, categoryId);
+}
+
+// ============================================================
+// 買い物リスト
+// ============================================================
+function loadShopping() {
+  withGas(renderShopping).getShoppingList();
+}
+
+// lists: [{id, name, items:[{id,name,kind,quantity,inCart}]}, ...]（進行中の全リスト＋未分類）
+function renderShopping(lists) {
+  var container = document.getElementById('shopping-lists');
+  if (!lists.length) {
+    container.innerHTML = '<div class="card"><div class="empty">進行中のリストがありません（Notionでリストを作成してください）</div></div>';
+    return;
+  }
+  container.innerHTML = lists.map(function (list) {
+    var wantCount = list.items.filter(function (i) { return !i.inCart; }).length;
+    var rows = list.items.length
+      ? list.items.map(renderShopItemRow_).join('')
+      : '<div class="empty">品目がありません</div>';
+    return '<div class="card shop-list-card">'
+      + '<div class="card-title shop-list-name">' + escapeHtml_(list.name) + '<span class="badge">' + wantCount + '</span></div>'
+      + rows
+      + '</div>';
+  }).join('');
+}
+
+function renderShopItemRow_(i) {
+  var plannedNote = (i.plannedQuantity != null) ? '<div class="row-sub">予定 ' + i.plannedQuantity + '</div>' : '';
+  return '<div class="shop-item' + (i.inCart ? ' in-cart' : '') + '">'
+    + '<div class="check-circle' + (i.inCart ? ' checked' : '') + '" onclick="toggleShopping(\'' + i.id + '\',' + i.inCart + ',this)">✓</div>'
+    + '<div class="row-main"><div class="row-title">' + escapeHtml_(i.name) + '</div>' + plannedNote + '</div>'
+    + (i.kind ? '<span class="badge badge-mut">' + escapeHtml_(i.kind) + '</span>' : '')
+    + '<div class="shop-qty">'
+    + '<button onclick="changeQty_(\'' + i.id + '\',-1,this)">－</button>'
+    + '<span class="n tabular" data-qty>' + (i.quantity != null ? i.quantity : 0) + '</span>'
+    + '<button onclick="changeQty_(\'' + i.id + '\',1,this)">＋</button>'
+    + '</div>'
+    + '</div>';
+}
+
+function toggleShopping(id, currentlyInCart, el) {
+  el.classList.toggle('checked');
+  el.closest('.shop-item').classList.toggle('in-cart');
+  withGas(function () { loadShopping(); }).toggleShoppingCheck(id, currentlyInCart);
+}
+
+// deltaは+1/-1。表示中の数値をDOMから読んで計算する（連打してもズレないように）
+function changeQty_(id, delta, el) {
+  var qtyEl = el.parentElement.querySelector('[data-qty]');
+  var newQty = Math.max(0, parseInt(qtyEl.textContent, 10) + delta);
+  qtyEl.textContent = newQty; // 楽観的にすぐ反映
+  withGas(function () { loadShopping(); }).updateShoppingItemQuantity(id, newQty);
+}
+
+// ShoppingCacheの内容をまとめてNotionへ反映するだけ（買い物は続ける）
+function saveShopping() {
+  var statusEl = document.getElementById('shopping-save-status');
+  statusEl.textContent = '保存中…';
+  withGas(function (res) {
+    statusEl.textContent = res.ok ? '保存しました（' + res.count + '件）' : '一部保存に失敗しました';
+  }).saveShoppingProgress();
+}
+
+// Notionへ反映してからレシート撮影フローへ渡す
+function finalizeAndTakeReceipt() {
+  var statusEl = document.getElementById('shopping-save-status');
+  statusEl.textContent = '保存中…';
+  withGas(function (res) {
+    if (!res.ok) {
+      statusEl.textContent = '保存に失敗しました。もう一度お試しください';
+      return;
+    }
+    statusEl.textContent = '';
+    openReceiptChat_();
+  }).finalizeShoppingBeforeReceipt();
+}
+
+// Notionから作り直す（ローカルの未保存変更は破棄）
+function refreshShopping() {
+  if (!confirm('保存していない変更は失われます。Notionから最新の状態を取得しますか？')) return;
+  withGas(renderShopping).refreshShoppingList();
+}
+
+// ============================================================
+// ランニング/健康
+// ============================================================
+function loadRun() {
+  withGas(renderRun).getRunScreenData();
+}
+
+// plans: [{title, dateTime, statusName}] 共通の行レンダラ（過去/今日/今後で使い回す）
+function renderPlanRows_(plans, emptyText) {
+  return (plans && plans.length)
+    ? plans.map(function (p) {
+        return '<div class="list-row"><span class="row-icon">🏃</span><div class="row-main">'
+          + '<div class="row-title">' + escapeHtml_(p.title) + '</div>'
+          + '<div class="row-sub">' + formatDateTimeShort_(p.dateTime) + (p.statusName ? ' ・ ' + p.statusName : '') + '</div></div></div>';
+      }).join('')
+    : '<div class="empty">' + emptyText + '</div>';
+}
+
+function renderRun(data) {
+  var weatherHtml = '<div class="empty">緯度経度が未設定です（properties.local.js）</div>';
+  if (data.weather) {
+    weatherHtml =
+      '<div class="list-row"><span class="row-icon">' + weatherIcon_(data.weather.today.code) + '</span>'
+      + '<div class="row-main"><div class="row-title">今日</div></div>'
+      + '<div class="row-sub tabular">' + Math.round(data.weather.today.min) + '〜' + Math.round(data.weather.today.max) + '℃</div></div>'
+      + '<div class="list-row"><span class="row-icon">' + weatherIcon_(data.weather.tomorrow.code) + '</span>'
+      + '<div class="row-main"><div class="row-title">明日</div></div>'
+      + '<div class="row-sub tabular">' + Math.round(data.weather.tomorrow.min) + '〜' + Math.round(data.weather.tomorrow.max) + '℃</div></div>';
+  }
+  document.getElementById('run-weather').innerHTML = weatherHtml;
+
+  document.getElementById('run-past-week').innerHTML =
+    renderPlanRows_(data.pastWeekPlans, '過去1週間の健康・運動系の予定はありません');
+
+  document.getElementById('run-today-coach').textContent =
+    data.todayCoachComment || 'コーチコメントはまだありません';
+  document.getElementById('run-today-plans').innerHTML =
+    renderPlanRows_(data.todayPlans, '今日の健康・運動系の予定はありません');
+
+  document.getElementById('run-plan-list').innerHTML =
+    renderPlanRows_(data.futureWeekPlans, '今後1週間の健康・運動系の予定はまだありません');
+}
+
+// ============================================================
+// 予定 連続登録フォーム
+// ============================================================
+// 買い物カテゴリ選択時にこのリストへ追加する品目の下書き。[{name, quantity, kind}]
+// kind: '定期ストック'（サジェストから選択）| 'スポット購入'（自由入力）
+var shoppingItemDrafts = [];
+
+function initPlanAddForm() {
+  selectedCategory = null;
+  shoppingItemDrafts = [];
+  document.getElementById('plan-title').value = '';
+  document.getElementById('plan-routine').checked = false;
+  document.getElementById('plan-status').textContent = '';
+  document.getElementById('plan-shopping-panel').style.display = 'none';
+  document.getElementById('plan-shopping-panel').dataset.loaded = '';
+  document.getElementById('plan-shopping-list-name').value = '';
+  document.getElementById('plan-shopping-item-name').value = '';
+  document.getElementById('plan-shopping-item-qty').textContent = '1';
+  renderShoppingDraftItems_();
+  var now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  document.getElementById('plan-datetime').value = now.toISOString().slice(0, 16);
+
+  document.getElementById('plan-category-chips').innerHTML = '<div class="empty">読み込み中…</div>';
+  withGas(renderCategoryChips_).getActivityCategories();
+}
+
+// カテゴリは活動カテゴリマスタ(activityCategoryDb)から動的取得（★2026-09-13：旧ハードコード配列から変更）
+function renderCategoryChips_(categories) {
+  document.getElementById('plan-category-chips').innerHTML = categories.map(function (c) {
+    return '<div class="chip" data-cat="' + c + '" onclick="pickCategory(\'' + c + '\')">' + c + '</div>';
+  }).join('');
+}
+
+function pickCategory(cat) {
+  selectedCategory = cat;
+  document.querySelectorAll('#plan-category-chips .chip').forEach(function (el) {
+    el.classList.toggle('selected', el.getAttribute('data-cat') === cat);
+  });
+
+  // 「買い物」カテゴリの時だけ買い物リスト設定パネルを出す（他カテゴリでは内容を出さない。ユーザー指定）
+  var panel = document.getElementById('plan-shopping-panel');
+  if (cat === '買い物') {
+    panel.style.display = '';
+    if (!panel.dataset.loaded) {
+      panel.dataset.loaded = '1';
+      withGas(renderShoppingSetupOptions_).getShoppingSetupOptions();
+    }
+  } else {
+    panel.style.display = 'none';
+  }
+}
+
+// 買い物カテゴリ選択時：進行中リストの選択肢＋定期ストック品のサジェストを描画
+function renderShoppingSetupOptions_(data) {
+  var select = document.getElementById('plan-shopping-list-select');
+  var listOptionsHtml = '<option value="">（新規作成する）</option>' + data.activeLists.map(function (l) {
+    return '<option value="' + l.id + '">' + escapeHtml_(l.name) + '</option>';
+  }).join('');
+  select.innerHTML = listOptionsHtml;
+
+  var chipsEl = document.getElementById('plan-shopping-stock-chips');
+  chipsEl.innerHTML = data.stockSuggestions.length
+    ? data.stockSuggestions.map(function (s) {
+        return '<div class="chip" data-name="' + escapeHtml_(s.name) + '" onclick="toggleStockSuggestion_(\'' + escapeJs_(s.name) + '\',' + (s.plannedQuantity || 1) + ',this)">' + escapeHtml_(s.name) + '</div>';
+      }).join('')
+    : '<div class="empty">定期ストックの履歴はまだありません</div>';
+}
+
+// 定期ストックのチップをタップ：品目下書き一覧への追加/削除をトグル
+function toggleStockSuggestion_(name, plannedQuantity, el) {
+  el.classList.toggle('selected');
+  var idx = shoppingItemDrafts.findIndex(function (d) { return d.kind === '定期ストック' && d.name === name; });
+  if (idx === -1) {
+    shoppingItemDrafts.push({ name: name, quantity: plannedQuantity || 1, kind: '定期ストック' });
+  } else {
+    shoppingItemDrafts.splice(idx, 1);
+  }
+  renderShoppingDraftItems_();
+}
+
+// 数量入力欄の±ステッパー（1未満にはしない）
+function changeNewItemQty_(delta) {
+  var el = document.getElementById('plan-shopping-item-qty');
+  el.textContent = Math.max(1, parseInt(el.textContent, 10) + delta);
+}
+
+// 「品目を追加」ボタン：自由入力の品名＋数量を下書き一覧へ（新規=スポット購入扱い）
+function addShoppingItemDraft_() {
+  var nameEl = document.getElementById('plan-shopping-item-name');
+  var name = nameEl.value.trim();
+  if (!name) { alert('品名を入力してください'); return; }
+  var qty = parseInt(document.getElementById('plan-shopping-item-qty').textContent, 10) || 1;
+  shoppingItemDrafts.push({ name: name, quantity: qty, kind: 'スポット購入' });
+  nameEl.value = '';
+  document.getElementById('plan-shopping-item-qty').textContent = '1';
+  renderShoppingDraftItems_();
+}
+
+// このリストに追加される品目一覧を描画（自由入力＋選択済みの定期ストック）
+function renderShoppingDraftItems_() {
+  var el = document.getElementById('plan-shopping-draft-items');
+  el.innerHTML = shoppingItemDrafts.length
+    ? shoppingItemDrafts.map(function (d, idx) {
+        return '<div class="shop-item"><div class="row-main"><div class="row-title">' + escapeHtml_(d.name) + '</div>'
+          + '<div class="row-sub">' + d.kind + ' ・ 予定' + d.quantity + '</div></div>'
+          + '<button class="btn btn-pill-sm" onclick="removeShoppingDraftItem_(' + idx + ')">×</button></div>';
+      }).join('')
+    : '<div class="empty">まだ品目がありません</div>';
+}
+
+// 下書き一覧から品目を削除（定期ストック由来ならチップの選択状態も戻す）
+function removeShoppingDraftItem_(idx) {
+  var removed = shoppingItemDrafts[idx];
+  shoppingItemDrafts.splice(idx, 1);
+  if (removed.kind === '定期ストック') {
+    document.querySelectorAll('#plan-shopping-stock-chips .chip').forEach(function (chip) {
+      if (chip.getAttribute('data-name') === removed.name) chip.classList.remove('selected');
+    });
+  }
+  renderShoppingDraftItems_();
+}
+
+function submitPlan(keepOpen) {
+  var title = document.getElementById('plan-title').value.trim();
+  var dt = document.getElementById('plan-datetime').value;
+  var isRoutine = document.getElementById('plan-routine').checked;
+
+  if (!selectedCategory) { alert('カテゴリを選んでください'); return; }
+  if (!title) { alert('タイトルを入力してください'); return; }
+  if (!dt) { alert('日時を入力してください'); return; }
+
+  var dateTimeIso = dt + ':00+09:00';
+  var isShopping = selectedCategory === '買い物';
+  var shoppingListId = isShopping ? document.getElementById('plan-shopping-list-select').value : '';
+  var shoppingListName = isShopping ? document.getElementById('plan-shopping-list-name').value.trim() : '';
+
+  document.getElementById('plan-status').textContent = '登録中…';
+  withGas(function () {
+    // 買い物カテゴリで、リスト指定または品目の下書きがあれば続けてリストを作成/更新する
+    var needsShoppingSetup = isShopping && (shoppingListId || shoppingListName || shoppingItemDrafts.length > 0);
+    if (needsShoppingSetup) {
+      withGas(function () {
+        finishSubmitPlan_(title, keepOpen);
+      }).setupShoppingForPlan({
+        existingListId: shoppingListId || null,
+        newListName: shoppingListId ? '' : shoppingListName,
+        items: shoppingItemDrafts
+      });
+    } else {
+      finishSubmitPlan_(title, keepOpen);
+    }
+  }).addPlan({ title: title, categoryName: selectedCategory, dateTimeIso: dateTimeIso, isRoutine: isRoutine });
+}
+
+function finishSubmitPlan_(title, keepOpen) {
+  document.getElementById('plan-status').textContent = '「' + title + '」を追加しました';
+  if (keepOpen) {
+    initPlanAddForm();
+  } else {
+    if (liffReady && window.liff && liff.isInClient && liff.isInClient()) liff.closeWindow();
+    else goTo('home');
+  }
+}
+
+// ============================================================
+// ユーティリティ
+// ============================================================
+function weatherIcon_(code) {
+  if (code === 0) return '☀️';
+  if (code <= 3) return '⛅';
+  if (code <= 48) return '🌫️';
+  if (code <= 67) return '🌧️';
+  if (code <= 77) return '🌨️';
+  if (code <= 82) return '🌦️';
+  return '⛈️';
+}
+function formatDateTimeShort_(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  var hasTime = iso.indexOf('T') !== -1;
+  var s = (d.getMonth() + 1) + '/' + d.getDate();
+  if (hasTime) s += ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  return s;
+}
+function formatTimeOnly_(iso) {
+  if (!iso) return '';
+  if (iso.indexOf('T') === -1) return '終日';
+  var d = new Date(iso);
+  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+
+// ライト/ダーク手動切替（モックと同じ挙動。data-theme属性を切り替えるだけ）
+function toggleTheme() {
+  var root = document.documentElement;
+  var current = root.getAttribute('data-theme')
+    || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  var next = current === 'dark' ? 'light' : 'dark';
+  root.setAttribute('data-theme', next);
+  document.getElementById('theme-toggle').textContent = next === 'dark' ? '◑' : '◐';
+}
+function escapeHtml_(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+function escapeJs_(s) {
+  return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+// 初期表示
+goTo(currentScreen);
+</script>
+</body>
+</html>
