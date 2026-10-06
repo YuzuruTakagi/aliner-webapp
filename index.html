@@ -835,16 +835,26 @@ function renderHome(data) {
     renderRoutineAndPlan_(data.routineItems, data.planToday);
   }
 
-  // 週予定プレビュー（先頭3件）
+  // ★2026-10-06: 「今週の予定・天気」を、天気を主役にした日毎の表示に変更
+  // （天気アイコン→その日の健康・運動系の予定、無ければ「無し」）。
   var weekHtml;
-  if (data.weekHealthPlans.length === 0) {
-    weekHtml = '<div class="empty">今週の健康・運動系の予定はまだありません</div>';
-  } else {
-    weekHtml = data.weekHealthPlans.map(function (p) {
-      return '<div class="list-row"><span class="row-icon">🏃</span><div class="row-main">'
-        + '<div class="row-title">' + escapeHtml_(p.title) + '</div>'
-        + '<div class="row-sub">' + formatDateTimeShort_(p.dateTime) + '</div></div></div>';
+  if (data.weather && data.weather.days) {
+    var dayLabels = ['今日', '明日'];
+    weekHtml = data.weather.days.map(function (w, i) {
+      var label = dayLabels[i] || weekdayLabel_(w.date);
+      var plansForDay = data.weekHealthPlans.filter(function (p) {
+        return p.dateTime && p.dateTime.slice(0, 10) === w.date;
+      });
+      var planText = plansForDay.length
+        ? plansForDay.map(function (p) { return escapeHtml_(p.title); }).join('・')
+        : '無し';
+      return '<div class="list-row"><span class="row-icon weather-icon">' + weatherIcon_(w.code) + '</span>'
+        + '<div class="row-main"><div class="row-title">' + label + '</div>'
+        + '<div class="row-sub">' + planText + '</div></div>'
+        + '<div class="row-sub tabular">' + Math.round(w.min) + '〜' + Math.round(w.max) + '℃</div></div>';
     }).join('');
+  } else {
+    weekHtml = '<div class="empty">天気情報が取得できていません（緯度経度未設定の可能性）</div>';
   }
   document.getElementById('week-plan-preview').innerHTML = weekHtml;
 
