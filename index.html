@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ALINER</title>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Anton&display=swap" rel="stylesheet">
 <style>
@@ -319,6 +320,81 @@ input[type="text"], input[type="datetime-local"], select {
 .nav-btn svg { width: 20px; height: 20px; stroke-width: 2.2; }
 .nav-btn.active { color: var(--accent); }
 
+/* ---- 家計簿ダッシュボード（★2026-10-06追加） ---- */
+.card-label {
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-mut); margin: 0 0 10px;
+}
+.hero .balance-row { display: flex; align-items: baseline; gap: 10px; }
+.hero .balance-sign { font-size: 28px; font-weight: 700; color: var(--good); }
+.hero .balance-sign.neg { color: var(--crit); }
+.hero .balance-num {
+  font-family: "Anton", "Zen Kaku Gothic New", sans-serif;
+  font-size: 58px; line-height: .95; color: var(--good);
+}
+.hero .balance-num.neg { color: var(--crit); }
+.hero .balance-yen { font-size: 18px; color: var(--text-mut); margin-left: 2px; }
+.hero .balance-caption { font-size: 14.5px; font-weight: 500; color: var(--text); margin: 9px 0 18px; }
+.hero .split-row { display: flex; gap: 10px; }
+.hero .split {
+  flex: 1; background: var(--surface-2); border-radius: 12px; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.hero .split .k { font-size: 11px; color: var(--text-mut); }
+.hero .split .v { font-size: 17px; font-weight: 500; }
+.hero .split.expense .v { color: var(--text); }
+.hero .split.income .v { color: var(--good); }
+.progress-track { margin-top: 14px; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent); border-radius: 999px; }
+.progress-caption { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--text-mut); }
+
+.attention-grid { display: flex; gap: 10px; margin-bottom: 12px; }
+.attn-card {
+  flex: 1; background: var(--surface-2); border-radius: 14px; padding: 12px 13px;
+  display: flex; flex-direction: column; gap: 4px; cursor: pointer; border: 1px solid transparent;
+}
+.attn-card.flag { background: var(--accent-soft); border-color: rgba(178,76,44,.25); }
+.attn-card .k { font-size: 11px; color: var(--text-mut); }
+.attn-card .v { font-size: 19px; font-weight: 500; font-family: "Anton", sans-serif; letter-spacing: .01em; }
+.attn-card.flag .v { color: var(--accent); }
+.attn-card .sub { font-size: 11px; color: var(--text-mut); }
+.attn-detail { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); font-size: 12.5px; color: var(--text-mut); display: none; }
+.attn-detail.open { display: block; }
+.attn-detail .row { display: flex; justify-content: space-between; padding: 3px 0; }
+
+.cat-row { padding: 9px 0; cursor: pointer; }
+.cat-row:not(:last-of-type) { border-bottom: 1px solid var(--line); }
+.cat-top { display: flex; justify-content: space-between; font-size: 13.5px; margin-bottom: 6px; }
+.cat-top .name { font-weight: 500; }
+.cat-top .amt { color: var(--text-mut); }
+.cat-bar-track { height: 7px; border-radius: 999px; background: var(--accent-soft); overflow: hidden; }
+.cat-bar-fill { height: 100%; background: var(--accent); border-radius: 999px; }
+.cat-pct { font-size: 11px; color: var(--text-mut); margin-top: 4px; text-align: right; }
+.cat-detail { display: none; margin-top: 8px; padding: 9px 11px; background: var(--surface-2); border-radius: 10px; }
+.cat-detail.open { display: block; }
+.cat-detail .row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; color: var(--text-mut); }
+
+.acct-row { display: flex; align-items: center; gap: 8px; padding: 10px 0; }
+.acct-row:not(:last-of-type) { border-bottom: 1px solid var(--line); }
+.acct-row .name { flex: 1; font-size: 14px; }
+.acct-row .bal { font-size: 15px; font-weight: 500; }
+.acct-row .bal.neg { color: var(--crit); }
+
+.chart-wrap { height: 160px; margin-bottom: 4px; }
+.chart-legend { display: flex; gap: 14px; margin-top: 10px; font-size: 11px; color: var(--text-mut); }
+.chart-legend .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+.ai-block { margin-top: 14px; border-left: 3px solid var(--gold); background: var(--surface-2); border-radius: 0 12px 12px 0; padding: 12px 13px; cursor: pointer; }
+.ai-block .ai-head { display: flex; justify-content: space-between; align-items: center; }
+.ai-block .ai-label { font-size: 11px; font-weight: 700; color: var(--gold); letter-spacing: .04em; }
+.ai-block .ai-chevron { color: var(--text-mut); font-size: 12px; transition: transform .15s; }
+.ai-block.open .ai-chevron { transform: rotate(180deg); }
+.ai-block .ai-preview { font-size: 12.5px; color: var(--text-mut); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ai-block.open .ai-preview { display: none; }
+.ai-block .ai-full { display: none; font-size: 13px; line-height: 1.6; color: var(--text); margin-top: 8px; }
+.ai-block.open .ai-full { display: block; }
+.ai-block + .ai-block { margin-top: 8px; }
+
 .empty { color: var(--text-mut); font-size: 13px; padding: 8px 0; }
 .loading { color: var(--text-mut); font-size: 13px; padding: 20px 0; text-align: center; }
 
@@ -415,7 +491,7 @@ input[type="text"], input[type="datetime-local"], select {
 
   <!-- 家計簿帯（今月の支出/収入/総資産＋週次/月次締め状況。reportDbは未接続のためプレースホルダ。§5⑨・§12-5） -->
   <div class="card">
-    <div class="card-title">家計簿</div>
+    <div class="card-title" onclick="goTo('kakeibo')" style="cursor:pointer">家計簿<span>→</span></div>
     <div class="finance-summary" id="finance-summary">
       <div class="f expense"><span class="k">支出</span><span class="v tabular">未接続</span></div>
       <div class="f income"><span class="k">収入</span><span class="v tabular">未接続</span></div>
@@ -597,6 +673,16 @@ input[type="text"], input[type="datetime-local"], select {
   </div>
 </div>
 
+<!-- ============ 家計簿ダッシュボード（★2026-10-06追加） ============ -->
+<div class="view" id="view-kakeibo">
+  <div class="top-nav">
+    <span class="back" onclick="goTo('home')">←</span>
+    <span class="title">家計簿</span>
+  </div>
+
+  <div id="kakeibo-body"><div class="empty">読み込み中…</div></div>
+</div>
+
 <!-- ============ 下部ナビ（常時固定。記録・家計簿は専用画面ができたら追加） ============ -->
 <nav class="bottom-nav">
   <button class="nav-btn" id="nav-home" onclick="goTo('home')">
@@ -614,6 +700,10 @@ input[type="text"], input[type="datetime-local"], select {
   <button class="nav-btn" id="nav-run" onclick="goTo('run')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
     ランプラン
+  </button>
+  <button class="nav-btn" id="nav-kakeibo" onclick="goTo('kakeibo')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
+    家計簿
   </button>
 </nav>
 
@@ -771,6 +861,7 @@ function goTo(screen) {
   }
   else if (screen === 'run') loadRun();
   else if (screen === 'plan_add') initPlanAddForm();
+  else if (screen === 'kakeibo') loadKakeibo();
 }
 
 // ============================================================
@@ -1100,6 +1191,7 @@ function refreshCurrentScreen_() {
   if (currentScreen === 'home') loadHome(true);
   else if (currentScreen === 'shopping') refreshShopping();
   else if (currentScreen === 'run') loadRun();
+  else if (currentScreen === 'kakeibo') loadKakeibo(true);
 }
 
 // plans: [{title, dateTime, statusName}] 共通の行レンダラ（過去/今日/今後で使い回す）
@@ -1138,6 +1230,187 @@ function renderRun(data) {
 
   document.getElementById('run-plan-list').innerHTML =
     renderPlanRows_(data.futureWeekPlans, '今後1週間の健康・運動系の予定はまだありません');
+}
+
+// ============================================================
+// 家計簿ダッシュボード（★2026-10-06追加）
+// ------------------------------------------
+// GAS側(kakeibo.js)が1時間毎のバッチでNotionを集計し、KakeiboDashboardCacheシートへ
+// 書いた結果を読むだけ（高速）。「最新化」はヘッダのrefreshCurrentScreen_()経由で
+// forceRefresh=trueを渡し、その場でライブ集計させる。
+// ============================================================
+var kakeiboData_ = null;
+
+function loadKakeibo(forceRefresh) {
+  spinHeaderRefresh_(true);
+  withGas(function (data) {
+    spinHeaderRefresh_(false);
+    renderKakeibo(data);
+  }).getKakeiboDashboardData(!!forceRefresh);
+}
+
+function renderKakeibo(data) {
+  var body = document.getElementById('kakeibo-body');
+  if (!data) {
+    body.innerHTML = '<div class="empty">家計簿データが未設定です（NotionのDB IDが未設定の可能性）</div>';
+    return;
+  }
+  kakeiboData_ = data;
+
+  var s = data.summary;
+  var isNeg = s.balance < 0;
+  var signClass = isNeg ? ' neg' : '';
+  var now = new Date();
+  var daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  var dayPct = Math.round(now.getDate() / daysInMonth * 1000) / 10;
+
+  var html = '';
+  html += '<section class="card hero">'
+    + '<p class="card-label">当月収支</p>'
+    + '<div class="balance-row">'
+    + '<span class="balance-sign' + signClass + '">' + (isNeg ? '－' : '+') + '</span>'
+    + '<span class="balance-num tabular' + signClass + '">' + Math.abs(s.balance).toLocaleString() + '</span>'
+    + '<span class="balance-yen">円</span>'
+    + '</div>'
+    + '<p class="balance-caption">' + (now.getMonth() + 1) + '月' + now.getDate() + '日時点・月の' + dayPct + '%が経過</p>'
+    + '<div class="split-row">'
+    + '<div class="split expense"><span class="k">支出</span><span class="v tabular">¥' + s.expense.toLocaleString() + '</span></div>'
+    + '<div class="split income"><span class="k">収入</span><span class="v tabular">¥' + s.income.toLocaleString() + '</span></div>'
+    + '</div>'
+    + '<div class="progress-track"><div class="progress-fill" style="width:' + dayPct + '%"></div></div>'
+    + '<div class="progress-caption"><span>' + (now.getMonth() + 1) + '/1</span><span>' + dayPct + '%経過</span><span>' + (now.getMonth() + 1) + '/' + daysInMonth + '</span></div>'
+    + '</section>';
+
+  html += '<div class="attention-grid">'
+    + '<div class="attn-card' + (s.impulseTotal > 0 ? ' flag' : '') + '">'
+    + '<span class="k">' + (s.impulseTotal > 0 ? '⚠ 衝動買い' : '衝動買い') + '</span>'
+    + '<span class="v tabular">¥' + s.impulseTotal.toLocaleString() + '</span>'
+    + '<span class="sub">支出の' + s.impulseRate + '%</span>'
+    + '</div>'
+    + '<div class="attn-card">'
+    + '<span class="k">固定費（サブスク）</span>'
+    + '<span class="v tabular">¥' + s.fixedCostTotal.toLocaleString() + '</span>'
+    + '</div>'
+    + '</div>';
+
+  html += '<section class="card"><p class="card-label">今月のカテゴリ別支出</p><div id="kakeibo-cat-list"></div></section>';
+  html += '<section class="card"><p class="card-label">口座別残高</p><div id="kakeibo-acct-list"></div></section>';
+  html += '<section class="card"><p class="card-label">資産・支出の推移</p>'
+    + '<div class="chart-wrap"><canvas id="kakeibo-trend-chart"></canvas></div>'
+    + '<div class="chart-legend"><span><span class="dot" style="background:var(--cool)"></span>総資産</span>'
+    + '<span><span class="dot" style="background:var(--accent)"></span>月間支出</span></div>'
+    + '<div id="kakeibo-ai-blocks"></div></section>';
+
+  body.innerHTML = html;
+
+  renderKakeiboCategories_(data.categories, false);
+  renderKakeiboAccounts_(data.accounts);
+  renderKakeiboTrend_(data.history);
+  renderKakeiboAiReview_(data.aiReview);
+}
+
+function renderKakeiboCategories_(categories, showAll) {
+  var LIMIT = 5;
+  var items = showAll ? categories : categories.slice(0, LIMIT);
+  var rowsHtml = items.map(function (c) {
+    var idx = categories.indexOf(c);
+    return '<div class="cat-row" onclick="toggleKakeiboCatDetail_(' + idx + ')">'
+      + '<div class="cat-top"><span class="name">' + escapeHtml_(c.name) + '</span><span class="amt tabular">¥' + c.amount.toLocaleString() + '</span></div>'
+      + '<div class="cat-bar-track"><div class="cat-bar-fill" style="width:' + c.pct + '%"></div></div>'
+      + '<div class="cat-pct tabular">' + c.pct + '%</div>'
+      + '<div class="cat-detail" id="kakeibo-cat-detail-' + idx + '">' + renderKakeiboCatDetailRows_(c.recentItems) + '</div>'
+      + '</div>';
+  }).join('');
+  var moreHtml = (!showAll && categories.length > LIMIT)
+    ? '<button class="show-more" onclick="showAllKakeiboCategories_()">全カテゴリを見る（全' + categories.length + '件）</button>'
+    : '';
+  document.getElementById('kakeibo-cat-list').innerHTML = rowsHtml + moreHtml;
+}
+
+function showAllKakeiboCategories_() {
+  renderKakeiboCategories_(kakeiboData_.categories, true);
+}
+
+// カテゴリをタップした時の直近明細（3件、GAS側で絞り込み済み。kakeibo.js参照）
+function renderKakeiboCatDetailRows_(items) {
+  if (!items || !items.length) return '<div class="row"><span>明細なし</span></div>';
+  return items.map(function (i) {
+    return '<div class="row"><span>' + escapeHtml_(i.name) + '</span><span class="tabular">¥' + i.amount.toLocaleString() + '</span></div>';
+  }).join('');
+}
+
+function toggleKakeiboCatDetail_(idx) {
+  var el = document.getElementById('kakeibo-cat-detail-' + idx);
+  if (el) el.classList.toggle('open');
+}
+
+function renderKakeiboAccounts_(accounts) {
+  document.getElementById('kakeibo-acct-list').innerHTML = accounts.length
+    ? accounts.map(function (a) {
+        var negClass = a.balance < 0 ? ' neg' : '';
+        return '<div class="acct-row"><span class="name">' + escapeHtml_(a.name) + '</span>'
+          + '<span class="bal tabular' + negClass + '">¥' + a.balance.toLocaleString() + '</span></div>';
+      }).join('')
+    : '<div class="empty">口座データがありません</div>';
+}
+
+var kakeiboChart_ = null;
+function renderKakeiboTrend_(history) {
+  var canvas = document.getElementById('kakeibo-trend-chart');
+  if (!history || !history.length) {
+    canvas.parentElement.innerHTML = '<div class="empty">確定済みの月次レポートがまだありません</div>';
+    return;
+  }
+  var css = getComputedStyle(document.documentElement);
+  var cool = css.getPropertyValue('--cool').trim();
+  var accent = css.getPropertyValue('--accent').trim();
+  var textMut = css.getPropertyValue('--text-mut').trim();
+
+  if (kakeiboChart_) kakeiboChart_.destroy();
+  if (typeof Chart === 'undefined') {
+    canvas.parentElement.innerHTML = '<div class="empty">グラフライブラリの読み込みに失敗しました</div>';
+    return;
+  }
+  kakeiboChart_ = new Chart(canvas, {
+    data: {
+      labels: history.map(function (h) { return h.month; }),
+      datasets: [
+        { type: 'line', label: '総資産', data: history.map(function (h) { return h.asset; }),
+          borderColor: cool, backgroundColor: cool, yAxisID: 'y1', tension: .3, pointRadius: 3, pointBackgroundColor: cool, borderWidth: 2 },
+        { type: 'bar', label: '月間支出', data: history.map(function (h) { return h.expense; }),
+          backgroundColor: accent + '99', yAxisID: 'y2', borderRadius: 4, barThickness: 14 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: textMut, font: { size: 10 } } },
+        y1: { display: false },
+        y2: { display: false, min: 0 }
+      }
+    }
+  });
+}
+
+function renderKakeiboAiReview_(aiReview) {
+  var el = document.getElementById('kakeibo-ai-blocks');
+  var blocks = [];
+  if (aiReview && aiReview.analysis) blocks.push(renderKakeiboAiBlock_('kakeibo-ai-analysis', 'AI客観分析', aiReview.analysis));
+  if (aiReview && aiReview.evaluation) blocks.push(renderKakeiboAiBlock_('kakeibo-ai-eval', 'AI最終評価', aiReview.evaluation));
+  el.innerHTML = blocks.join('');
+}
+
+function renderKakeiboAiBlock_(id, label, text) {
+  return '<div class="ai-block" id="' + id + '" onclick="toggleKakeiboAi_(\'' + id + '\')">'
+    + '<div class="ai-head"><span class="ai-label">' + label + '</span><span class="ai-chevron">▾</span></div>'
+    + '<p class="ai-preview">' + escapeHtml_(text) + '</p>'
+    + '<p class="ai-full">' + escapeHtml_(text) + '</p>'
+    + '</div>';
+}
+
+function toggleKakeiboAi_(id) {
+  document.getElementById(id).classList.toggle('open');
 }
 
 // ============================================================
