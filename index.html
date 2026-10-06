@@ -600,10 +600,13 @@ function openReceiptChat_() {
 var GAS_API_URL = 'https://script.google.com/macros/s/AKfycbx4piSRxfGwa7eoc9d6Q0pW3JuzDcazbnghHEnnxeYPMWyxMgL3P_ZtOcrfKRMIkDSbXQ/exec';
 
 function callGas_(fnName, args) {
+  // ★2026-10-06: 画面が公開ホスト(GitHub Pages)上にあるため、GAS_API_URL自体の秘匿性には頼れない。
+  // 代わりにLIFFの本人確認トークンを毎回送り、GAS側(liffApi.js)でLINEのverify APIを使って検証する。
+  var idToken = (liffReady && window.liff && liff.getIDToken) ? liff.getIDToken() : null;
   return fetch(GAS_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // JSON Content-Typeだとpreflightが飛ぶため簡易リクエストにする
-    body: JSON.stringify({ fn: fnName, args: args || [] })
+    body: JSON.stringify({ fn: fnName, args: args || [], idToken: idToken })
   }).then(function (res) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return res.json();
