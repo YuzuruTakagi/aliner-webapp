@@ -74,7 +74,8 @@ html, body {
 }
 body {
   max-width: 480px; margin: 0 auto;
-  padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+  /* ★2026-10-06: 下部ナビ(固定・約64px)の下に本文が隠れないよう底の余白を広げた */
+  padding: 0 16px calc(76px + env(safe-area-inset-bottom));
 }
 .tabular { font-variant-numeric: tabular-nums; }
 
@@ -84,8 +85,12 @@ body {
 
 /* ブランドバー（§12-2：ロゴマスターをinline・color:var(--accent)、ワードマークはAnton/skewX(-13deg)） */
 .brandbar {
+  /* ★2026-10-06: スクロールしても上部に固定表示されるようsticky化。
+     bodyの左右paddingの外まで塗りつぶすため横方向はmargin:0 -16pxで相殺。 */
+  position: sticky; top: 0; z-index: 20;
   display: flex; align-items: center; gap: 8px;
-  padding: 4px 0 10px;
+  margin: 0 -16px; padding: calc(16px + env(safe-area-inset-top)) 16px 10px;
+  background: var(--bg);
 }
 .brandbar svg { height: 30px; width: auto; color: var(--accent); flex-shrink: 0; display: block; }
 .brandbar .wordmark {
@@ -292,6 +297,24 @@ input[type="text"], input[type="datetime-local"], select {
 .top-nav .back { cursor: pointer; color: var(--text-mut); font-size: 20px; }
 .top-nav .title { font-size: 16px; font-weight: 700; }
 
+/* 下部ナビ（常時固定。§12のモック通りホーム/予定/買い物/ランプランの4つ。
+   記録・家計簿は専用画面ができてから追加する。★2026-10-06追加） */
+.bottom-nav {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  max-width: 480px; margin: 0 auto;
+  display: flex; justify-content: space-around;
+  background: var(--surface); border-top: 1px solid var(--line);
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+}
+.nav-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  background: none; border: none; cursor: pointer;
+  color: var(--text-mut); font-size: 10.5px; font-weight: 700;
+  padding: 4px 2px;
+}
+.nav-btn svg { width: 20px; height: 20px; stroke-width: 2.2; }
+.nav-btn.active { color: var(--accent); }
+
 .empty { color: var(--text-mut); font-size: 13px; padding: 8px 0; }
 .loading { color: var(--text-mut); font-size: 13px; padding: 20px 0; text-align: center; }
 </style>
@@ -300,7 +323,7 @@ input[type="text"], input[type="datetime-local"], select {
 
 <!-- ★2026-09-14診断用：LIFF接続に失敗した時だけ理由を画面に出す（実機でconsole.logが見れないため）。
      普段は空のまま非表示。問題が解消したら消してよい一時的な仕組み。 -->
-<div id="liff-diag" style="display:none; background:#9C3826; color:#fff; font-size:12px; padding:8px 12px; margin:-16px -16px 12px; word-break:break-all"></div>
+<div id="liff-diag" style="display:none; background:#9C3826; color:#fff; font-size:12px; padding:calc(8px + env(safe-area-inset-top)) 12px 8px; margin:0 -16px 12px; word-break:break-all"></div>
 
 <!-- ブランドバー（全画面共通・常時表示。§12-2） -->
 <div class="brandbar">
@@ -533,6 +556,26 @@ input[type="text"], input[type="datetime-local"], select {
   </div>
 </div>
 
+<!-- ============ 下部ナビ（常時固定。記録・家計簿は専用画面ができたら追加） ============ -->
+<nav class="bottom-nav">
+  <button class="nav-btn" id="nav-home" onclick="goTo('home')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg>
+    ホーム
+  </button>
+  <button class="nav-btn" id="nav-plan_add" onclick="goTo('plan_add')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
+    予定
+  </button>
+  <button class="nav-btn" id="nav-shopping" onclick="goTo('shopping')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l1 13H5L6 7Z"/><path d="M9 7V5a3 3 0 0 1 6 0v2"/></svg>
+    買い物
+  </button>
+  <button class="nav-btn" id="nav-run" onclick="goTo('run')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+    ランプラン
+  </button>
+</nav>
+
 <script>
 // ============================================================
 // LIFF初期化
@@ -664,6 +707,10 @@ function goTo(screen) {
   if (!target) screen = 'home', target = document.getElementById('view-home');
   target.classList.add('active');
   currentScreen = screen;
+
+  document.querySelectorAll('.nav-btn').forEach(function (btn) { btn.classList.remove('active'); });
+  var navBtn = document.getElementById('nav-' + screen);
+  if (navBtn) navBtn.classList.add('active');
 
   if (screen === 'home') loadHome();
   else if (screen === 'shopping') loadShopping();
