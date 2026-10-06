@@ -568,6 +568,9 @@ function sendToBot(text) {
   if (liffReady && window.liff && liff.isInClient && liff.isInClient()) {
     liff.sendMessages([{ type: 'text', text: text }]).then(function () {
       liff.closeWindow();
+    }).catch(function (e) {
+      // ★2026-10-06: 失敗時に何も表示されず無反応に見えるだけだったため、エラーを可視化する
+      alert('送信に失敗しました: ' + (e && e.message ? e.message : String(e)));
     });
   } else {
     alert('（LIFF未接続のためbot連携は未実行）\nトークへ送信予定のテキスト: ' + text);
