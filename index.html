@@ -317,6 +317,10 @@ input[type="text"], input[type="datetime-local"], select {
 
 .empty { color: var(--text-mut); font-size: 13px; padding: 8px 0; }
 .loading { color: var(--text-mut); font-size: 13px; padding: 20px 0; text-align: center; }
+
+/* 通信中インジケーター（★2026-10-06追加。更新ボタン等にspinningクラスを付けて回転させる） */
+.spinning { display: inline-block; animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -341,7 +345,10 @@ input[type="text"], input[type="datetime-local"], select {
       <div class="greeting" id="home-greeting">ALINER</div>
       <div class="sub" id="home-date">-</div>
     </div>
-    <div class="sub" id="home-weather">－</div>
+    <div style="display:flex; align-items:center; gap:8px">
+      <div class="sub" id="home-weather">－</div>
+      <span class="back" id="home-refresh-icon" onclick="loadHome(true)" title="最新の情報に更新">⟳</span>
+    </div>
   </div>
 
   <!-- サントラック（ALINERのモチーフ。§12-1） -->
@@ -577,6 +584,15 @@ input[type="text"], input[type="datetime-local"], select {
 </nav>
 
 <script>
+// ★2026-10-06: 天気データ(日の出/日没)が届く前でも、手動で選んだテーマがあれば最初から
+// 反映しておく（関数定義は巻き上げられるのでsetThemeAttr_はこの時点でも呼べる）。
+(function () {
+  try {
+    var override = localStorage.getItem('aliner_theme_override');
+    if (override === 'light' || override === 'dark') setThemeAttr_(override);
+  } catch (e) {}
+})();
+
 // ============================================================
 // LIFF初期化
 // ★2026-09-14: 「ALINER」ミニアプリチャネルの開発用LIFF IDを設定済み。
@@ -680,6 +696,8 @@ function callGas_(fnName, args) {
 // google.script.run と同じ「メソッド名＝GAS側の関数名」という呼び方をProxyで再現する。
 function withGas(successFn) {
   var failureHandler = function (err) {
+    // ★2026-10-06: 失敗時にスピナーが回りっぱなしにならないよう、表示中の全スピナーを止める
+    document.querySelectorAll('.spinning').forEach(function (el) { el.classList.remove('spinning'); });
     console.error(err);
     alert('通信エラー: ' + (err && err.message ? err.message : err));
   };
@@ -721,13 +739,34 @@ function goTo(screen) {
 // ============================================================
 // HOME
 // ============================================================
-function loadHome() {
+var HOME_DATA_CACHE_KEY_ = 'aliner_homeData';
+
+// ★2026-10-06: HOME表示の体感速度対策。getHomeData()はNotionへの問い合わせが10回以上
+// 直列に積み重なり数秒かかるため、まずlocalStorageの前回結果があれば即描画し、
+// その裏で最新データを取りにいって届き次第上書きする（stale-while-revalidate）。
+// forceRefresh=trueの時だけキャッシュ表示を飛ばす（更新ボタン用）。GAS側(CacheService)にも
+// 短時間キャッシュがあるので、通常時はその分も速くなる。
+function loadHome(forceRefresh) {
   var now = new Date();
   document.getElementById('home-greeting').textContent = greetingByHour_(now.getHours());
   document.getElementById('home-date').textContent =
     (now.getMonth() + 1) + '月' + now.getDate() + '日(' + ['日','月','火','水','木','金','土'][now.getDay()] + ')';
 
-  withGas(renderHome).getHomeData();
+  if (!forceRefresh) {
+    try {
+      var cached = localStorage.getItem(HOME_DATA_CACHE_KEY_);
+      if (cached) renderHome(JSON.parse(cached));
+    } catch (e) { /* localStorageが使えない環境は無視して通常取得だけ行う */ }
+  }
+
+  var refreshIcon = document.getElementById('home-refresh-icon');
+  if (refreshIcon) refreshIcon.classList.add('spinning');
+
+  withGas(function (data) {
+    renderHome(data);
+    try { localStorage.setItem(HOME_DATA_CACHE_KEY_, JSON.stringify(data)); } catch (e) {}
+    if (refreshIcon) refreshIcon.classList.remove('spinning');
+  }).getHomeData(!!forceRefresh);
 }
 
 function greetingByHour_(h) {
@@ -783,6 +822,8 @@ function renderHome(data) {
     var frac = (now - sunrise) / (sunset - sunrise);
     frac = Math.max(0, Math.min(1, frac));
     sunNow.style.left = (frac * 100) + '%';
+
+    applyAutoTheme_(data.weather.sunrise, data.weather.sunset);
   }
 
   // コーチの一言（§0：生成済みコメントを読むだけ。まだ無ければプレースホルダのまま）
@@ -1224,14 +1265,42 @@ function formatTimeOnly_(iso) {
   return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
 }
 
-// ライト/ダーク手動切替（モックと同じ挙動。data-theme属性を切り替えるだけ）
+// ============================================================
+// テーマ（★2026-10-06: 日の出/日没連動に変更）
+// ------------------------------------------
+// ALINERは「日の中で伴走する」がコンセプト（サントラックのモチーフ）なので、
+// デフォルトはシステム設定ではなく実際の日の出/日没時刻でライト/ダークを自動切替する。
+// ユーザーが手動で切り替えた場合は、その選択をlocalStorageに保存して以後ずっと優先する
+// （次に日の出/日没データが届いても自動切替で上書きしない）。
+// ============================================================
+var THEME_OVERRIDE_KEY_ = 'aliner_theme_override';
+
+function setThemeAttr_(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  var btn = document.getElementById('theme-toggle');
+  if (btn) btn.textContent = theme === 'dark' ? '◑' : '◐';
+}
+
+// data.weather.sunrise/sunset が届くたびに呼ばれる。手動上書き中は何もしない。
+function applyAutoTheme_(sunriseIso, sunsetIso) {
+  var override = null;
+  try { override = localStorage.getItem(THEME_OVERRIDE_KEY_); } catch (e) {}
+  if (override === 'light' || override === 'dark') return; // 手動上書き優先
+
+  var sunrise = new Date(sunriseIso).getTime();
+  var sunset = new Date(sunsetIso).getTime();
+  var now = Date.now();
+  var isDaytime = now >= sunrise && now < sunset;
+  setThemeAttr_(isDaytime ? 'light' : 'dark');
+}
+
+// 手動切替：以後は日の出/日没が来ても上書きされない固定選択として保存する
 function toggleTheme() {
-  var root = document.documentElement;
-  var current = root.getAttribute('data-theme')
+  var current = document.documentElement.getAttribute('data-theme')
     || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   var next = current === 'dark' ? 'light' : 'dark';
-  root.setAttribute('data-theme', next);
-  document.getElementById('theme-toggle').textContent = next === 'dark' ? '◑' : '◐';
+  try { localStorage.setItem(THEME_OVERRIDE_KEY_, next); } catch (e) {}
+  setThemeAttr_(next);
 }
 function escapeHtml_(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
