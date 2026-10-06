@@ -461,6 +461,40 @@ input[type="text"], input[type="datetime-local"], select {
     <span class="back" onclick="refreshShopping()" title="Notionから更新（未保存の変更は失われます）">⟳</span>
   </div>
 
+  <!-- ★2026-10-06追加：画面起点でリストを新規作成/品目追加できるように。
+       既存の「予定追加」画面のパネルと同じ作り(setupShoppingForPlan()を共有)、instance='shop'として管理 -->
+  <button class="btn btn-block" id="shop-setup-toggle" onclick="toggleShoppingSetupPanel_()" style="margin-bottom:12px">＋ 新しいリスト/品目を追加</button>
+  <div class="card" id="shop-setup-panel" style="display:none">
+    <div class="card-title">リスト/品目を追加</div>
+    <label class="field-label">追加先のリスト</label>
+    <select id="shop-shopping-list-select"><option value="">（新規作成する）</option></select>
+    <label class="field-label">新しいリスト名（新規作成する場合）</label>
+    <input type="text" id="shop-shopping-list-name" placeholder="例：スーパー用">
+
+    <label class="field-label">品目を追加</label>
+    <div class="btn-row" style="align-items:center; flex-wrap:nowrap">
+      <input type="text" id="shop-shopping-item-name" placeholder="品名（例：洗剤）" autocomplete="off" style="flex:1; min-width:0">
+      <div class="shop-qty">
+        <button onclick="changeNewItemQty_('shop', -1)">－</button>
+        <span class="n tabular" id="shop-shopping-item-qty">1</span>
+        <button onclick="changeNewItemQty_('shop', 1)">＋</button>
+      </div>
+      <button class="btn btn-pill-sm" onclick="addShoppingItemDraft_('shop')">追加</button>
+    </div>
+
+    <label class="field-label">定期ストックから追加（タップで一覧に追加）</label>
+    <div class="chip-row" id="shop-shopping-stock-chips"><div class="empty">読み込み中…</div></div>
+
+    <label class="field-label">追加する品目</label>
+    <div id="shop-shopping-draft-items"><div class="empty">まだ品目がありません</div></div>
+
+    <div class="btn-row" style="margin-top:14px">
+      <button class="btn btn-accent" onclick="submitShoppingSetup_()">リストに反映</button>
+      <button class="btn" onclick="toggleShoppingSetupPanel_(false)">閉じる</button>
+    </div>
+    <div class="empty" id="shop-setup-status"></div>
+  </div>
+
   <!-- 進行中の全リストをグルーピング表示（１つだけ選ぶUIにはしない＝買い忘れ防止） -->
   <!-- チェック/数量変更はShoppingCacheシートだけを更新（高速）。Notionへの反映は保存/レシートボタンで一括。 -->
   <div id="shopping-lists">
@@ -548,11 +582,11 @@ input[type="text"], input[type="datetime-local"], select {
     <div class="btn-row" style="align-items:center; flex-wrap:nowrap">
       <input type="text" id="plan-shopping-item-name" placeholder="品名（例：洗剤）" autocomplete="off" style="flex:1; min-width:0">
       <div class="shop-qty">
-        <button onclick="changeNewItemQty_(-1)">－</button>
+        <button onclick="changeNewItemQty_('plan', -1)">－</button>
         <span class="n tabular" id="plan-shopping-item-qty">1</span>
-        <button onclick="changeNewItemQty_(1)">＋</button>
+        <button onclick="changeNewItemQty_('plan', 1)">＋</button>
       </div>
-      <button class="btn btn-pill-sm" onclick="addShoppingItemDraft_()">追加</button>
+      <button class="btn btn-pill-sm" onclick="addShoppingItemDraft_('plan')">追加</button>
     </div>
 
     <label class="field-label">定期ストックから追加（タップで一覧に追加）</label>
@@ -731,7 +765,10 @@ function goTo(screen) {
   if (navBtn) navBtn.classList.add('active');
 
   if (screen === 'home') loadHome();
-  else if (screen === 'shopping') loadShopping();
+  else if (screen === 'shopping') {
+    toggleShoppingSetupPanel_(false); // 画面に入り直すたびパネルは閉じた状態に戻す
+    loadShopping();
+  }
   else if (screen === 'run') loadRun();
   else if (screen === 'plan_add') initPlanAddForm();
 }
@@ -1078,11 +1115,18 @@ function renderRun(data) {
 // ============================================================
 // 買い物カテゴリ選択時にこのリストへ追加する品目の下書き。[{name, quantity, kind}]
 // kind: '定期ストック'（サジェストから選択）| 'スポット購入'（自由入力）
-var shoppingItemDrafts = [];
+// ★2026-10-06: 「予定追加」画面(instance='plan')と「買い物リスト」画面(instance='shop')の
+// 両方から同じ編集パネルを使えるよう、下書き状態・DOM要素IDともにinstance単位で分離した。
+// GAS側は元々の setupShoppingForPlan() をそのまま共有する（予定を作るかどうかの違いだけ）。
+var shoppingDrafts_ = { plan: [], shop: [] };
+
+function shopId_(instance, suffix) {
+  return (instance === 'shop' ? 'shop-shopping-' : 'plan-shopping-') + suffix;
+}
 
 function initPlanAddForm() {
   selectedCategory = null;
-  shoppingItemDrafts = [];
+  shoppingDrafts_.plan = [];
   document.getElementById('plan-title').value = '';
   document.getElementById('plan-routine').checked = false;
   document.getElementById('plan-status').textContent = '';
@@ -1091,7 +1135,7 @@ function initPlanAddForm() {
   document.getElementById('plan-shopping-list-name').value = '';
   document.getElementById('plan-shopping-item-name').value = '';
   document.getElementById('plan-shopping-item-qty').textContent = '1';
-  renderShoppingDraftItems_();
+  renderShoppingDraftItems_('plan');
   var now = new Date();
   now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
   document.getElementById('plan-datetime').value = now.toISOString().slice(0, 16);
@@ -1119,81 +1163,123 @@ function pickCategory(cat) {
     panel.style.display = '';
     if (!panel.dataset.loaded) {
       panel.dataset.loaded = '1';
-      withGas(renderShoppingSetupOptions_).getShoppingSetupOptions();
+      withGas(function (data) { renderShoppingSetupOptions_('plan', data); }).getShoppingSetupOptions();
     }
   } else {
     panel.style.display = 'none';
   }
 }
 
+// 買い物リスト画面側の「＋ 新しいリスト/品目を追加」トグル（show省略時は反転）
+function toggleShoppingSetupPanel_(show) {
+  var panel = document.getElementById('shop-setup-panel');
+  var nextShown = (show === undefined) ? (panel.style.display === 'none') : show;
+  panel.style.display = nextShown ? '' : 'none';
+  if (nextShown && !panel.dataset.loaded) {
+    panel.dataset.loaded = '1';
+    withGas(function (data) { renderShoppingSetupOptions_('shop', data); }).getShoppingSetupOptions();
+  }
+}
+
 // 買い物カテゴリ選択時：進行中リストの選択肢＋定期ストック品のサジェストを描画
-function renderShoppingSetupOptions_(data) {
-  var select = document.getElementById('plan-shopping-list-select');
+function renderShoppingSetupOptions_(instance, data) {
+  var select = document.getElementById(shopId_(instance, 'list-select'));
   var listOptionsHtml = '<option value="">（新規作成する）</option>' + data.activeLists.map(function (l) {
     return '<option value="' + l.id + '">' + escapeHtml_(l.name) + '</option>';
   }).join('');
   select.innerHTML = listOptionsHtml;
 
-  var chipsEl = document.getElementById('plan-shopping-stock-chips');
+  var chipsEl = document.getElementById(shopId_(instance, 'stock-chips'));
   chipsEl.innerHTML = data.stockSuggestions.length
     ? data.stockSuggestions.map(function (s) {
-        return '<div class="chip" data-name="' + escapeHtml_(s.name) + '" onclick="toggleStockSuggestion_(\'' + escapeJs_(s.name) + '\',' + (s.plannedQuantity || 1) + ',this)">' + escapeHtml_(s.name) + '</div>';
+        return '<div class="chip" data-name="' + escapeHtml_(s.name) + '" onclick="toggleStockSuggestion_(\'' + instance + '\',\'' + escapeJs_(s.name) + '\',' + (s.plannedQuantity || 1) + ',this)">' + escapeHtml_(s.name) + '</div>';
       }).join('')
     : '<div class="empty">定期ストックの履歴はまだありません</div>';
 }
 
 // 定期ストックのチップをタップ：品目下書き一覧への追加/削除をトグル
-function toggleStockSuggestion_(name, plannedQuantity, el) {
+function toggleStockSuggestion_(instance, name, plannedQuantity, el) {
   el.classList.toggle('selected');
-  var idx = shoppingItemDrafts.findIndex(function (d) { return d.kind === '定期ストック' && d.name === name; });
+  var drafts = shoppingDrafts_[instance];
+  var idx = drafts.findIndex(function (d) { return d.kind === '定期ストック' && d.name === name; });
   if (idx === -1) {
-    shoppingItemDrafts.push({ name: name, quantity: plannedQuantity || 1, kind: '定期ストック' });
+    drafts.push({ name: name, quantity: plannedQuantity || 1, kind: '定期ストック' });
   } else {
-    shoppingItemDrafts.splice(idx, 1);
+    drafts.splice(idx, 1);
   }
-  renderShoppingDraftItems_();
+  renderShoppingDraftItems_(instance);
 }
 
 // 数量入力欄の±ステッパー（1未満にはしない）
-function changeNewItemQty_(delta) {
-  var el = document.getElementById('plan-shopping-item-qty');
+function changeNewItemQty_(instance, delta) {
+  var el = document.getElementById(shopId_(instance, 'item-qty'));
   el.textContent = Math.max(1, parseInt(el.textContent, 10) + delta);
 }
 
 // 「品目を追加」ボタン：自由入力の品名＋数量を下書き一覧へ（新規=スポット購入扱い）
-function addShoppingItemDraft_() {
-  var nameEl = document.getElementById('plan-shopping-item-name');
+function addShoppingItemDraft_(instance) {
+  var nameEl = document.getElementById(shopId_(instance, 'item-name'));
   var name = nameEl.value.trim();
   if (!name) { alert('品名を入力してください'); return; }
-  var qty = parseInt(document.getElementById('plan-shopping-item-qty').textContent, 10) || 1;
-  shoppingItemDrafts.push({ name: name, quantity: qty, kind: 'スポット購入' });
+  var qtyEl = document.getElementById(shopId_(instance, 'item-qty'));
+  var qty = parseInt(qtyEl.textContent, 10) || 1;
+  shoppingDrafts_[instance].push({ name: name, quantity: qty, kind: 'スポット購入' });
   nameEl.value = '';
-  document.getElementById('plan-shopping-item-qty').textContent = '1';
-  renderShoppingDraftItems_();
+  qtyEl.textContent = '1';
+  renderShoppingDraftItems_(instance);
 }
 
 // このリストに追加される品目一覧を描画（自由入力＋選択済みの定期ストック）
-function renderShoppingDraftItems_() {
-  var el = document.getElementById('plan-shopping-draft-items');
-  el.innerHTML = shoppingItemDrafts.length
-    ? shoppingItemDrafts.map(function (d, idx) {
+function renderShoppingDraftItems_(instance) {
+  var el = document.getElementById(shopId_(instance, 'draft-items'));
+  var drafts = shoppingDrafts_[instance];
+  el.innerHTML = drafts.length
+    ? drafts.map(function (d, idx) {
         return '<div class="shop-item"><div class="row-main"><div class="row-title">' + escapeHtml_(d.name) + '</div>'
           + '<div class="row-sub">' + d.kind + ' ・ 予定' + d.quantity + '</div></div>'
-          + '<button class="btn btn-pill-sm" onclick="removeShoppingDraftItem_(' + idx + ')">×</button></div>';
+          + '<button class="btn btn-pill-sm" onclick="removeShoppingDraftItem_(\'' + instance + '\',' + idx + ')">×</button></div>';
       }).join('')
     : '<div class="empty">まだ品目がありません</div>';
 }
 
 // 下書き一覧から品目を削除（定期ストック由来ならチップの選択状態も戻す）
-function removeShoppingDraftItem_(idx) {
-  var removed = shoppingItemDrafts[idx];
-  shoppingItemDrafts.splice(idx, 1);
+function removeShoppingDraftItem_(instance, idx) {
+  var drafts = shoppingDrafts_[instance];
+  var removed = drafts[idx];
+  drafts.splice(idx, 1);
   if (removed.kind === '定期ストック') {
-    document.querySelectorAll('#plan-shopping-stock-chips .chip').forEach(function (chip) {
+    document.querySelectorAll('#' + shopId_(instance, 'stock-chips') + ' .chip').forEach(function (chip) {
       if (chip.getAttribute('data-name') === removed.name) chip.classList.remove('selected');
     });
   }
-  renderShoppingDraftItems_();
+  renderShoppingDraftItems_(instance);
+}
+
+// 買い物リスト画面から直接：予定を作らず、リスト作成/品目追加だけ行う
+function submitShoppingSetup_() {
+  var listId = document.getElementById('shop-shopping-list-select').value;
+  var listName = document.getElementById('shop-shopping-list-name').value.trim();
+  var items = shoppingDrafts_.shop;
+
+  if (!listId && !listName) { alert('既存リストを選ぶか、新しいリスト名を入力してください'); return; }
+
+  var statusEl = document.getElementById('shop-setup-status');
+  statusEl.textContent = '反映中…';
+  withGas(function () {
+    statusEl.textContent = '';
+    shoppingDrafts_.shop = [];
+    document.getElementById('shop-shopping-list-name').value = '';
+    document.getElementById('shop-shopping-item-name').value = '';
+    document.getElementById('shop-shopping-item-qty').textContent = '1';
+    renderShoppingDraftItems_('shop');
+    document.getElementById('shop-setup-panel').dataset.loaded = ''; // 次回開いた時にリスト選択肢を再取得
+    toggleShoppingSetupPanel_(false);
+    loadShopping();
+  }).setupShoppingForPlan({
+    existingListId: listId || null,
+    newListName: listId ? '' : listName,
+    items: items
+  });
 }
 
 function submitPlan(keepOpen) {
@@ -1213,14 +1299,14 @@ function submitPlan(keepOpen) {
   document.getElementById('plan-status').textContent = '登録中…';
   withGas(function () {
     // 買い物カテゴリで、リスト指定または品目の下書きがあれば続けてリストを作成/更新する
-    var needsShoppingSetup = isShopping && (shoppingListId || shoppingListName || shoppingItemDrafts.length > 0);
+    var needsShoppingSetup = isShopping && (shoppingListId || shoppingListName || shoppingDrafts_.plan.length > 0);
     if (needsShoppingSetup) {
       withGas(function () {
         finishSubmitPlan_(title, keepOpen);
       }).setupShoppingForPlan({
         existingListId: shoppingListId || null,
         newListName: shoppingListId ? '' : shoppingListName,
-        items: shoppingItemDrafts
+        items: shoppingDrafts_.plan
       });
     } else {
       finishSubmitPlan_(title, keepOpen);
