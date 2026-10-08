@@ -372,7 +372,8 @@ input[type="text"], input[type="datetime-local"], select {
 .cat-pct { font-size: 11px; color: var(--text-mut); margin-top: 4px; text-align: right; }
 .cat-detail { display: none; margin-top: 8px; padding: 9px 11px; background: var(--surface-2); border-radius: 10px; }
 .cat-detail.open { display: block; }
-.cat-detail .row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; color: var(--text-mut); }
+.cat-detail .row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; color: var(--text); }
+.cat-detail .row .item-store { font-size: 10.5px; color: var(--text-mut); }
 
 .acct-row { display: flex; align-items: center; gap: 8px; padding: 10px 0; }
 .acct-row:not(:last-of-type) { border-bottom: 1px solid var(--line); }
@@ -1332,10 +1333,13 @@ function showAllKakeiboCategories_() {
 }
 
 // カテゴリをタップした時の直近明細（3件、GAS側で絞り込み済み。kakeibo.js参照）
+// ★2026-10-09: storeはレシート読み取り(LINE_DecodeReceipt)が「備考」に書き込んだ店舗名
+// （kakeibo.jsのparseTransactionPage_参照）。無ければ品名だけ表示する。
 function renderKakeiboCatDetailRows_(items) {
   if (!items || !items.length) return '<div class="row"><span>明細なし</span></div>';
   return items.map(function (i) {
-    return '<div class="row"><span>' + escapeHtml_(i.name) + '</span><span class="tabular">¥' + i.amount.toLocaleString() + '</span></div>';
+    var label = i.store ? escapeHtml_(i.name) + ' <span class="item-store">・' + escapeHtml_(i.store) + '</span>' : escapeHtml_(i.name);
+    return '<div class="row"><span>' + label + '</span><span class="tabular">¥' + i.amount.toLocaleString() + '</span></div>';
   }).join('');
 }
 
