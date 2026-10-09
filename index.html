@@ -396,6 +396,10 @@ input[type="text"], input[type="datetime-local"], select {
 .ai-block.open .ai-full { display: block; }
 .ai-block + .ai-block { margin-top: 8px; }
 
+/* プライバシーモード（★2026-10-09追加）。金額だけぼかす。店舗名・カテゴリ名・AIレビューは対象外 */
+#view-kakeibo.privacy .money { filter: blur(7px); user-select: none; }
+#kakeibo-privacy-toggle.active { color: var(--accent); }
+
 .empty { color: var(--text-mut); font-size: 13px; padding: 8px 0; }
 .loading { color: var(--text-mut); font-size: 13px; padding: 20px 0; text-align: center; }
 
@@ -679,6 +683,8 @@ input[type="text"], input[type="datetime-local"], select {
   <div class="top-nav">
     <span class="back" onclick="goTo('home')">←</span>
     <span class="title">家計簿</span>
+    <span class="finance-spacer"></span>
+    <span class="back" id="kakeibo-privacy-toggle" onclick="toggleKakeiboPrivacy_()" title="金額を隠す/表示">👁</span>
   </div>
 
   <div id="kakeibo-body"><div class="empty">読み込み中…</div></div>
@@ -1241,13 +1247,37 @@ function renderRun(data) {
 // forceRefresh=trueを渡し、その場でライブ集計させる。
 // ============================================================
 var kakeiboData_ = null;
+var KAKEIBO_PRIVACY_KEY_ = 'aliner_kakeibo_privacy';
 
 function loadKakeibo(forceRefresh) {
+  applyKakeiboPrivacyState_(); // 画面に入るたびに前回の設定を復元
   spinHeaderRefresh_(true);
   withGas(function (data) {
     spinHeaderRefresh_(false);
     renderKakeibo(data);
+    applyKakeiboPrivacyState_(); // 再描画でDOMが差し替わるため再適用
   }).getKakeiboDashboardData(!!forceRefresh);
+}
+
+// 他人に画面を見せる時用：金額だけぼかす（店舗名・カテゴリ名・AIレビューは対象外。ユーザー指定）。
+// 選択はlocalStorageに保存し、次にこの画面を開いた時も維持する。
+function toggleKakeiboPrivacy_() {
+  var on = document.getElementById('view-kakeibo').classList.toggle('privacy');
+  try { localStorage.setItem(KAKEIBO_PRIVACY_KEY_, on ? '1' : ''); } catch (e) {}
+  updateKakeiboPrivacyIcon_(on);
+}
+
+function applyKakeiboPrivacyState_() {
+  var on = false;
+  try { on = localStorage.getItem(KAKEIBO_PRIVACY_KEY_) === '1'; } catch (e) {}
+  document.getElementById('view-kakeibo').classList.toggle('privacy', on);
+  updateKakeiboPrivacyIcon_(on);
+}
+
+function updateKakeiboPrivacyIcon_(on) {
+  var btn = document.getElementById('kakeibo-privacy-toggle');
+  btn.textContent = on ? '🙈' : '👁';
+  btn.classList.toggle('active', on);
 }
 
 function renderKakeibo(data) {
@@ -1270,13 +1300,13 @@ function renderKakeibo(data) {
     + '<p class="card-label">当月収支</p>'
     + '<div class="balance-row">'
     + '<span class="balance-sign' + signClass + '">' + (isNeg ? '－' : '+') + '</span>'
-    + '<span class="balance-num tabular' + signClass + '">' + Math.abs(s.balance).toLocaleString() + '</span>'
+    + '<span class="balance-num tabular money' + signClass + '">' + Math.abs(s.balance).toLocaleString() + '</span>'
     + '<span class="balance-yen">円</span>'
     + '</div>'
     + '<p class="balance-caption">' + (now.getMonth() + 1) + '月' + now.getDate() + '日時点・月の' + dayPct + '%が経過</p>'
     + '<div class="split-row">'
-    + '<div class="split expense"><span class="k">支出</span><span class="v tabular">¥' + s.expense.toLocaleString() + '</span></div>'
-    + '<div class="split income"><span class="k">収入</span><span class="v tabular">¥' + s.income.toLocaleString() + '</span></div>'
+    + '<div class="split expense"><span class="k">支出</span><span class="v tabular money">¥' + s.expense.toLocaleString() + '</span></div>'
+    + '<div class="split income"><span class="k">収入</span><span class="v tabular money">¥' + s.income.toLocaleString() + '</span></div>'
     + '</div>'
     + '<div class="progress-track"><div class="progress-fill" style="width:' + dayPct + '%"></div></div>'
     + '<div class="progress-caption"><span>' + (now.getMonth() + 1) + '/1</span><span>' + dayPct + '%経過</span><span>' + (now.getMonth() + 1) + '/' + daysInMonth + '</span></div>'
@@ -1285,19 +1315,19 @@ function renderKakeibo(data) {
   html += '<div class="attention-grid">'
     + '<div class="attn-card' + (s.impulseTotal > 0 ? ' flag' : '') + '">'
     + '<span class="k">' + (s.impulseTotal > 0 ? '⚠ 衝動買い' : '衝動買い') + '</span>'
-    + '<span class="v tabular">¥' + s.impulseTotal.toLocaleString() + '</span>'
+    + '<span class="v tabular money">¥' + s.impulseTotal.toLocaleString() + '</span>'
     + '<span class="sub">支出の' + s.impulseRate + '%</span>'
     + '</div>'
     + '<div class="attn-card">'
     + '<span class="k">固定費（サブスク）</span>'
-    + '<span class="v tabular">¥' + s.fixedCostTotal.toLocaleString() + '</span>'
+    + '<span class="v tabular money">¥' + s.fixedCostTotal.toLocaleString() + '</span>'
     + '</div>'
     + '</div>';
 
   html += '<section class="card"><p class="card-label">今月のカテゴリ別支出</p><div id="kakeibo-cat-list"></div></section>';
   html += '<section class="card"><p class="card-label">口座別残高</p><div id="kakeibo-acct-list"></div></section>';
   html += '<section class="card"><p class="card-label">資産・支出の推移</p>'
-    + '<div class="chart-wrap"><canvas id="kakeibo-trend-chart"></canvas></div>'
+    + '<div class="chart-wrap money"><canvas id="kakeibo-trend-chart"></canvas></div>'
     + '<div class="chart-legend"><span><span class="dot" style="background:var(--cool)"></span>総資産</span>'
     + '<span><span class="dot" style="background:var(--accent)"></span>月間支出</span></div>'
     + '<div id="kakeibo-ai-blocks"></div></section>';
@@ -1316,7 +1346,7 @@ function renderKakeiboCategories_(categories, showAll) {
   var rowsHtml = items.map(function (c) {
     var idx = categories.indexOf(c);
     return '<div class="cat-row" onclick="toggleKakeiboCatDetail_(' + idx + ')">'
-      + '<div class="cat-top"><span class="name">' + escapeHtml_(c.name) + '</span><span class="amt tabular">¥' + c.amount.toLocaleString() + '</span></div>'
+      + '<div class="cat-top"><span class="name">' + escapeHtml_(c.name) + '</span><span class="amt tabular money">¥' + c.amount.toLocaleString() + '</span></div>'
       + '<div class="cat-bar-track"><div class="cat-bar-fill" style="width:' + c.pct + '%"></div></div>'
       + '<div class="cat-pct tabular">' + c.pct + '%</div>'
       + '<div class="cat-detail" id="kakeibo-cat-detail-' + idx + '">' + renderKakeiboCatDetailRows_(c.recentItems) + '</div>'
@@ -1339,7 +1369,7 @@ function renderKakeiboCatDetailRows_(items) {
   if (!items || !items.length) return '<div class="row"><span>明細なし</span></div>';
   return items.map(function (i) {
     var label = i.store ? escapeHtml_(i.name) + ' <span class="item-store">・' + escapeHtml_(i.store) + '</span>' : escapeHtml_(i.name);
-    return '<div class="row"><span>' + label + '</span><span class="tabular">¥' + i.amount.toLocaleString() + '</span></div>';
+    return '<div class="row"><span>' + label + '</span><span class="tabular money">¥' + i.amount.toLocaleString() + '</span></div>';
   }).join('');
 }
 
@@ -1353,7 +1383,7 @@ function renderKakeiboAccounts_(accounts) {
     ? accounts.map(function (a) {
         var negClass = a.balance < 0 ? ' neg' : '';
         return '<div class="acct-row"><span class="name">' + escapeHtml_(a.name) + '</span>'
-          + '<span class="bal tabular' + negClass + '">¥' + a.balance.toLocaleString() + '</span></div>';
+          + '<span class="bal tabular money' + negClass + '">¥' + a.balance.toLocaleString() + '</span></div>';
       }).join('')
     : '<div class="empty">口座データがありません</div>';
 }
