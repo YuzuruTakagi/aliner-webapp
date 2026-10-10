@@ -374,6 +374,7 @@ input[type="text"], input[type="datetime-local"], select {
 .cat-detail.open { display: block; }
 .cat-detail .row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; color: var(--text); }
 .cat-detail .row .item-store { font-size: 10.5px; color: var(--text-mut); }
+.cat-detail .row .item-count { font-size: 10.5px; color: var(--text-mut); margin-left: 4px; }
 
 .acct-row { display: flex; align-items: center; gap: 8px; padding: 10px 0; }
 .acct-row:not(:last-of-type) { border-bottom: 1px solid var(--line); }
@@ -1379,7 +1380,7 @@ function renderKakeiboCategories_(categories, showAll) {
       + '<div class="cat-top"><span class="name">' + escapeHtml_(c.name) + '</span><span class="amt tabular money">¥' + c.amount.toLocaleString() + '</span></div>'
       + '<div class="cat-bar-track"><div class="cat-bar-fill" style="width:' + c.pct + '%"></div></div>'
       + '<div class="cat-pct tabular">' + c.pct + '%</div>'
-      + '<div class="cat-detail" id="kakeibo-cat-detail-' + idx + '">' + renderKakeiboCatDetailRows_(c.recentItems) + '</div>'
+      + '<div class="cat-detail" id="kakeibo-cat-detail-' + idx + '">' + renderKakeiboCatDetailRows_(c.storeSummary) + '</div>'
       + '</div>';
   }).join('');
   var moreHtml = (!showAll && categories.length > LIMIT)
@@ -1398,8 +1399,8 @@ function showAllKakeiboCategories_() {
 function renderKakeiboCatDetailRows_(items) {
   if (!items || !items.length) return '<div class="row"><span>明細なし</span></div>';
   return items.map(function (i) {
-    var label = i.store ? escapeHtml_(i.name) + ' <span class="item-store">・' + escapeHtml_(i.store) + '</span>' : escapeHtml_(i.name);
-    return '<div class="row"><span>' + label + '</span><span class="tabular money">¥' + i.amount.toLocaleString() + '</span></div>';
+    var countLabel = i.count > 1 ? ' <span class="item-count">' + i.count + '件</span>' : '';
+    return '<div class="row"><span>' + escapeHtml_(i.store) + countLabel + '</span><span class="tabular money">¥' + i.amount.toLocaleString() + '</span></div>';
   }).join('');
 }
 
