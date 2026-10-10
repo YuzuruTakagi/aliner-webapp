@@ -785,13 +785,24 @@ if (!window.liff) {
 // bot連携：LIFFがあればトーク側へメッセージを送って閉じる。無ければ素のブラウザ確認用にアラートで代替。
 // ★2026-09-13: このLIFFは「ALINER」チャネルに属するので、送信先は常にALINERのトーク
 // （固定コマンド文字列をLINE_HealthCoachのWebhookが受けて処理する。handlers.js参照）。
+// ★2026-10-10: ミニアプリやサービスタブ等、1:1チャット以外から開くと INVALID_RECEIVER が出る。
+// その場合は ALINERトークを直接開いてメッセージをテキスト欄に流し込むフォールバックへ。
+var ALINER_OA_ID_ = '@239bcxop';
 function sendToBot(text) {
   if (liffReady && window.liff && liff.isInClient && liff.isInClient()) {
     liff.sendMessages([{ type: 'text', text: text }]).then(function () {
       liff.closeWindow();
     }).catch(function (e) {
-      // ★2026-10-06: 失敗時に何も表示されず無反応に見えるだけだったため、エラーを可視化する
-      alert('送信に失敗しました: ' + (e && e.message ? e.message : String(e)));
+      var msg = (e && e.message) ? e.message : String(e);
+      if (msg.indexOf('INVALID_RECEIVER') !== -1) {
+        // 1:1チャット外から開いた場合: ALINERトークを開いてテキスト欄に文字を流し込む
+        liff.openWindow({
+          url: 'https://line.me/R/oaMessage/' + ALINER_OA_ID_ + '/?' + encodeURIComponent(text),
+          external: false
+        });
+      } else {
+        alert('送信に失敗しました: ' + msg);
+      }
     });
   } else {
     alert('（LIFF未接続のためbot連携は未実行）\nトークへ送信予定のテキスト: ' + text);
