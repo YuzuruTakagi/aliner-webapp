@@ -1173,7 +1173,7 @@ function renderRoutineItems_(items, targetEl) {
         + '<span class="plan-dot" style="background:' + categoryColor_(item.categoryName) + '"></span>'
         + '<span class="plan-ttl">' + escapeHtml_(item.name) + '</span>'
         + '<span class="plan-chip routine">ルーティン</span>'
-        + '<div class="check-circle' + (checked ? ' checked' : '') + '" onclick="checkRoutineTodo(\'' + item.id + '\',\'' + escapeJs_(item.name) + '\',' + (item.categoryId ? '\'' + item.categoryId + '\'' : 'null') + ',this)">✓</div>'
+        + '<div class="check-circle' + (checked ? ' checked' : '') + '" onclick="toggleRoutine(\'' + item.id + '\',\'' + escapeJs_(item.name) + '\',' + (item.categoryId ? '\'' + item.categoryId + '\'' : 'null') + ',this)">✓</div>'
         + '</div>'
       );
     });
@@ -1202,7 +1202,7 @@ function renderTodoList_(routineItems, planToday, targetEl) {
         + '<span class="plan-dot" style="background:' + categoryColor_(item.categoryName) + '"></span>'
         + '<span class="plan-ttl">' + escapeHtml_(item.name) + '</span>'
         + '<span class="plan-chip routine">ルーティン</span>'
-        + '<div class="check-circle' + (checked ? ' checked' : '') + '" onclick="checkRoutineTodo(\'' + item.id + '\',\'' + escapeJs_(item.name) + '\',' + (item.categoryId ? '\'' + item.categoryId + '\'' : 'null') + ',this)">✓</div>'
+        + '<div class="check-circle' + (checked ? ' checked' : '') + '" onclick="toggleRoutine(\'' + item.id + '\',\'' + escapeJs_(item.name) + '\',' + (item.categoryId ? '\'' + item.categoryId + '\'' : 'null') + ',this)">✓</div>'
         + '</div>';
     });
   });
@@ -1298,9 +1298,17 @@ function renderRoutineAndPlan_(routineItems, planToday) {
   }
 }
 
-function checkRoutine(id, name, categoryId, el) {
-  el.classList.add('checked');
-  withGas(function () { loadHome(); }).toggleRoutineCheck(id, name, categoryId);
+// ルーティンのチェック丸をタップ：未チェックなら実績追加、チェック済みなら取消（実績アーカイブ）。
+// HOME/ToDoどちらから呼ばれても、終わったら今いる画面を再読込する。
+function toggleRoutine(id, name, categoryId, el) {
+  var reload = function () { if (currentScreen === 'todo') loadTodo(); else loadHome(); };
+  if (el.classList.contains('checked')) {
+    el.classList.remove('checked');
+    withGas(reload).untoggleRoutineCheck(id);
+  } else {
+    el.classList.add('checked');
+    withGas(reload).toggleRoutineCheck(id, name, categoryId);
+  }
 }
 
 function togglePlanMemo_(row) {
@@ -1312,10 +1320,6 @@ function togglePlanMemo_(row) {
   if (chevron) chevron.textContent = open ? '▼' : '▲';
 }
 
-function checkRoutineTodo(id, name, categoryId, el) {
-  el.classList.add('checked');
-  withGas(function () { loadTodo(); }).toggleRoutineCheck(id, name, categoryId);
-}
 
 // ============================================================
 // ToDo（ルーティンチェックリスト）
