@@ -1181,19 +1181,78 @@ function renderRoutineItems_(items, targetEl) {
   targetEl.innerHTML = rows.join('');
 }
 
+// ToDo画面専用：ルーティン（タイミング別）＋今日の予定（チェックで完了化）を1つのリストに表示
+function renderTodoList_(routineItems, planToday, targetEl) {
+  var html = '';
+
+  // ルーティンセクション（タイミング別）
+  var timingOrder = ['朝', '夜', '随時'];
+  var groups = {};
+  routineItems.forEach(function(item) {
+    var t = item.timing || '随時';
+    if (!groups[t]) groups[t] = [];
+    groups[t].push(item);
+  });
+  timingOrder.forEach(function(timing) {
+    if (!groups[timing] || !groups[timing].length) return;
+    html += '<div class="timing-header">' + timing + '</div>';
+    groups[timing].forEach(function(item) {
+      var checked = item.doneCount > 0;
+      html += '<div class="plan-item">'
+        + '<span class="plan-dot" style="background:' + categoryColor_(item.categoryName) + '"></span>'
+        + '<span class="plan-ttl">' + escapeHtml_(item.name) + '</span>'
+        + '<span class="plan-chip routine">ルーティン</span>'
+        + '<div class="check-circle' + (checked ? ' checked' : '') + '" onclick="checkRoutineTodo(\'' + item.id + '\',\'' + escapeJs_(item.name) + '\',' + (item.categoryId ? '\'' + item.categoryId + '\'' : 'null') + ',this)">✓</div>'
+        + '</div>';
+    });
+  });
+
+  // 今日の予定セクション
+  var pendingPlans = planToday.filter(function(p) { return p.statusName !== '完了'; });
+  if (pendingPlans.length) {
+    html += '<div class="timing-header">今日の予定</div>';
+    pendingPlans.forEach(function(p) {
+      html += '<div class="plan-item" id="todo-plan-' + p.id + '">'
+        + '<span class="plan-time">' + formatTimeOnly_(p.dateTime) + '</span>'
+        + '<span class="plan-dot" style="background:' + categoryColor_(p.categoryName) + '"></span>'
+        + '<div class="row-main" style="flex:1;min-width:0">'
+        + '<div class="plan-ttl">' + escapeHtml_(p.title) + '</div>'
+        + (p.memo ? '<div class="row-sub" style="margin-top:2px">' + escapeHtml_(p.memo) + '</div>' : '')
+        + '</div>'
+        + '<div class="check-circle" onclick="checkPlanDone(\'' + p.id + '\',this)">✓</div>'
+        + '</div>';
+    });
+  }
+
+  targetEl.innerHTML = html || '<div class="empty">今日の項目はありません</div>';
+}
+
+function checkPlanDone(planId, el) {
+  el.classList.add('checked');
+  withGas(function() { loadTodo(); }).updatePlanStatus(planId);
+}
+
 function renderRoutineAndPlan_(routineItems, planToday) {
   var el = document.getElementById('routine-list');
   renderRoutineItems_(routineItems, el);
 
-  // 予定（ルーティン行の下に続けて追加）
+  // 予定（タップでメモ展開）
   if (planToday && planToday.length) {
     var planRows = planToday.map(function(p) {
-      return '<div class="plan-item">'
+      var hasMemo = !!p.memo;
+      var row = '<div class="plan-item' + (hasMemo ? ' plan-item-expandable' : '') + '"'
+        + (hasMemo ? ' onclick="togglePlanMemo_(this)"' : '') + '>'
         + '<span class="plan-time">' + formatTimeOnly_(p.dateTime) + '</span>'
         + '<span class="plan-dot" style="background:' + categoryColor_(p.categoryName) + '"></span>'
         + '<span class="plan-ttl">' + escapeHtml_(p.title) + '</span>'
         + (p.statusName ? '<span class="plan-chip">' + escapeHtml_(p.statusName) + '</span>' : '')
+        + (hasMemo ? '<span style="color:var(--text-mut);font-size:12px;flex-shrink:0">▼</span>' : '')
         + '</div>';
+      if (hasMemo) {
+        row += '<div class="plan-memo-expand" style="display:none;padding:6px 12px 8px 57px;font-size:12.5px;color:var(--text-mut);line-height:1.6">'
+          + escapeHtml_(p.memo) + '</div>';
+      }
+      return row;
     });
     el.insertAdjacentHTML('beforeend', planRows.join(''));
   }
@@ -1202,6 +1261,15 @@ function renderRoutineAndPlan_(routineItems, planToday) {
 function checkRoutine(id, name, categoryId, el) {
   el.classList.add('checked');
   withGas(function () { loadHome(); }).toggleRoutineCheck(id, name, categoryId);
+}
+
+function togglePlanMemo_(row) {
+  var memo = row.nextElementSibling;
+  if (!memo || !memo.classList.contains('plan-memo-expand')) return;
+  var open = memo.style.display !== 'none';
+  memo.style.display = open ? 'none' : 'block';
+  var chevron = row.querySelector('span:last-child');
+  if (chevron) chevron.textContent = open ? '▼' : '▲';
 }
 
 function checkRoutineTodo(id, name, categoryId, el) {
@@ -1221,10 +1289,11 @@ function loadTodo() {
       var sel = (opt === dayType) ? ' selected' : '';
       return '<div class="daytype-btn' + sel + '" onclick="pickTodoDayType(\'' + opt + '\')">' + opt + '</div>';
     }).join('');
+    var el = document.getElementById('todo-routine-list');
     if (!dayType) {
-      document.getElementById('todo-routine-list').innerHTML = '<div class="empty">日種別を選んでください</div>';
+      el.innerHTML = '<div class="empty">日種別を選んでください</div>';
     } else {
-      renderRoutineItems_(data.routineItems || [], document.getElementById('todo-routine-list'));
+      renderTodoList_(data.routineItems || [], data.planToday || [], el);
     }
   }).getHomeData(false);
 }
