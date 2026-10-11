@@ -655,8 +655,8 @@ body.privacy .money { filter: blur(7px); user-select: none; }
       <label for="plan-routine">ルーティン（習慣タスク）</label>
     </div>
 
-    <label class="field-label">メモ・ToDo（任意）</label>
-    <textarea id="plan-memo" rows="3" placeholder="例：持ち物：保険証、前日に確認すること" style="width:100%; padding:10px 12px; border-radius:10px; background:var(--surface-2); border:1px solid var(--line); color:var(--text); font-family:inherit; font-size:14px; resize:vertical;"></textarea>
+    <label class="field-label">メモ・ToDo（任意／1行＝1項目）</label>
+    <textarea id="plan-memo" rows="3" placeholder="1行につき1つ書くとToDo画面で個別にチェックできます&#10;例：&#10;保険証を持つ&#10;前日に書類を印刷&#10;受付で番号札をとる" style="width:100%; padding:10px 12px; border-radius:10px; background:var(--surface-2); border:1px solid var(--line); color:var(--text); font-family:inherit; font-size:14px; resize:vertical;"></textarea>
 
     <div class="btn-row" style="margin-top:18px">
       <button class="btn btn-accent" onclick="submitPlan(true)">追加してもう1件</button>
@@ -1207,24 +1207,60 @@ function renderTodoList_(routineItems, planToday, targetEl) {
     });
   });
 
-  // 今日の予定セクション
-  var pendingPlans = planToday.filter(function(p) { return p.statusName !== '完了'; });
+  // 今日の予定セクション（予定自体＋メモ1行＝1ToDoをそれぞれチェック可能に＝A案）
+  var pendingPlans = planToday.filter(function(p) { return p.statusName !== '予定通り完了'; });
+  todoMemoLines_ = {};
   if (pendingPlans.length) {
     html += '<div class="timing-header">今日の予定</div>';
     pendingPlans.forEach(function(p) {
-      html += '<div class="plan-item" id="todo-plan-' + p.id + '">'
-        + '<span class="plan-time">' + formatTimeOnly_(p.dateTime) + '</span>'
-        + '<span class="plan-dot" style="background:' + categoryColor_(p.categoryName) + '"></span>'
-        + '<div class="row-main" style="flex:1;min-width:0">'
-        + '<div class="plan-ttl">' + escapeHtml_(p.title) + '</div>'
-        + (p.memo ? '<div class="row-sub" style="margin-top:2px">' + escapeHtml_(p.memo) + '</div>' : '')
-        + '</div>'
-        + '<div class="check-circle" onclick="checkPlanDone(\'' + p.id + '\',this)">✓</div>'
-        + '</div>';
+      var lines = memoToLines_(p.memo);
+      todoMemoLines_[p.id] = lines.slice();
+
+      if (lines.length) {
+        // メモに1行以上ある予定：見出し行（チェック無し）＋各行をチェック項目として並べる
+        html += '<div class="plan-item" style="opacity:.85">'
+          + '<span class="plan-time">' + formatTimeOnly_(p.dateTime) + '</span>'
+          + '<span class="plan-dot" style="background:' + categoryColor_(p.categoryName) + '"></span>'
+          + '<span class="plan-ttl">' + escapeHtml_(p.title) + '</span>'
+          + '</div>';
+        html += '<div id="todo-plan-' + p.id + '">';
+        lines.forEach(function(line) {
+          html += '<div class="plan-item todo-subitem" style="padding-left:40px">'
+            + '<span class="plan-ttl">' + escapeHtml_(line) + '</span>'
+            + '<div class="check-circle" onclick="checkTodoItem(\'' + p.id + '\',\'' + escapeJs_(line) + '\',this)">✓</div>'
+            + '</div>';
+        });
+        html += '</div>';
+      } else {
+        // メモ無しの予定：従来どおり予定ごと1チェックで完了
+        html += '<div class="plan-item" id="todo-plan-' + p.id + '">'
+          + '<span class="plan-time">' + formatTimeOnly_(p.dateTime) + '</span>'
+          + '<span class="plan-dot" style="background:' + categoryColor_(p.categoryName) + '"></span>'
+          + '<span class="plan-ttl">' + escapeHtml_(p.title) + '</span>'
+          + '<div class="check-circle" onclick="checkPlanDone(\'' + p.id + '\',this)">✓</div>'
+          + '</div>';
+      }
     });
   }
 
   targetEl.innerHTML = html || '<div class="empty">今日の項目はありません</div>';
+}
+
+// メモ本文（複数行テキスト）を ToDo 行の配列へ。空行は捨てる。
+function memoToLines_(memo) {
+  if (!memo) return [];
+  return memo.split('\n').map(function(l) { return l.trim(); }).filter(function(l) { return l !== ''; });
+}
+
+// 予定ID → 残っているToDo行配列。チェックのたびに該当行を抜いてGASへ渡す（サーバーはPATCH 1回）。
+var todoMemoLines_ = {};
+
+function checkTodoItem(planId, lineText, el) {
+  el.classList.add('checked');
+  var lines = todoMemoLines_[planId] || [];
+  var remaining = lines.filter(function(l) { return l !== lineText; });
+  todoMemoLines_[planId] = remaining;
+  withGas(function() { loadTodo(); }).removeTodoItemFromPlan(planId, remaining);
 }
 
 function checkPlanDone(planId, el) {
@@ -1249,8 +1285,12 @@ function renderRoutineAndPlan_(routineItems, planToday) {
         + (hasMemo ? '<span style="color:var(--text-mut);font-size:12px;flex-shrink:0">▼</span>' : '')
         + '</div>';
       if (hasMemo) {
+        var memoLines = memoToLines_(p.memo);
+        var memoHtml = memoLines.length
+          ? memoLines.map(function(l) { return '・' + escapeHtml_(l); }).join('<br>')
+          : escapeHtml_(p.memo);
         row += '<div class="plan-memo-expand" style="display:none;padding:6px 12px 8px 57px;font-size:12.5px;color:var(--text-mut);line-height:1.6">'
-          + escapeHtml_(p.memo) + '</div>';
+          + memoHtml + '</div>';
       }
       return row;
     });
