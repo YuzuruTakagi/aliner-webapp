@@ -655,6 +655,9 @@ body.privacy .money { filter: blur(7px); user-select: none; }
       <label for="plan-routine">ルーティン（習慣タスク）</label>
     </div>
 
+    <label class="field-label">メモ・ToDo（任意）</label>
+    <textarea id="plan-memo" rows="3" placeholder="例：持ち物：保険証、前日に確認すること" style="width:100%; padding:10px 12px; border-radius:10px; background:var(--surface-2); border:1px solid var(--line); color:var(--text); font-family:inherit; font-size:14px; resize:vertical;"></textarea>
+
     <div class="btn-row" style="margin-top:18px">
       <button class="btn btn-accent" onclick="submitPlan(true)">追加してもう1件</button>
       <button class="btn" onclick="submitPlan(false)">追加して閉じる</button>
@@ -1169,7 +1172,7 @@ function renderRoutineItems_(items, targetEl) {
         '<div class="plan-item">'
         + '<span class="plan-dot" style="background:' + categoryColor_(item.categoryName) + '"></span>'
         + '<span class="plan-ttl">' + escapeHtml_(item.name) + '</span>'
-        + '<span class="plan-chip routine">ルーティン' + (item.doneCount > 1 ? '・' + item.doneCount + '回' : '') + '</span>'
+        + '<span class="plan-chip routine">ルーティン</span>'
         + '<div class="check-circle' + (checked ? ' checked' : '') + '" onclick="checkRoutineTodo(\'' + item.id + '\',\'' + escapeJs_(item.name) + '\',' + (item.categoryId ? '\'' + item.categoryId + '\'' : 'null') + ',this)">✓</div>'
         + '</div>'
       );
@@ -1579,6 +1582,7 @@ function initPlanAddForm() {
   selectedCategory = null;
   shoppingDrafts_.plan = [];
   document.getElementById('plan-title').value = '';
+  document.getElementById('plan-memo').value = '';
   document.getElementById('plan-routine').checked = false;
   document.getElementById('plan-status').textContent = '';
   document.getElementById('plan-shopping-panel').style.display = 'none';
@@ -1748,6 +1752,7 @@ function submitPlan(keepOpen) {
   var shoppingListName = isShopping ? document.getElementById('plan-shopping-list-name').value.trim() : '';
 
   document.getElementById('plan-status').textContent = '登録中…';
+  var memo = document.getElementById('plan-memo').value.trim();
   withGas(function () {
     // 買い物カテゴリで、リスト指定または品目の下書きがあれば続けてリストを作成/更新する
     var needsShoppingSetup = isShopping && (shoppingListId || shoppingListName || shoppingDrafts_.plan.length > 0);
@@ -1762,7 +1767,7 @@ function submitPlan(keepOpen) {
     } else {
       finishSubmitPlan_(title, keepOpen);
     }
-  }).addPlan({ title: title, categoryName: selectedCategory, dateTimeIso: dateTimeIso, isRoutine: isRoutine });
+  }).addPlan({ title: title, categoryName: selectedCategory, dateTimeIso: dateTimeIso, isRoutine: isRoutine, memo: memo || null });
 }
 
 function finishSubmitPlan_(title, keepOpen) {
